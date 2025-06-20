@@ -4,8 +4,8 @@ import SignIn from './pages/Kirish/SignIn';
 import AdminPanel from './pages/AdminPanel/AdminPanel';
 import DeliveryPanel from './pages/Dastafka/DeliveryPanel';
 import SkladPanel from './pages/Sklad/SkladPanel';
-import Menyu from './pages/KassaUser/Menyu'; // kasir sahifasi
-import Logout from './pages/Chiqish/logout'; // mavjud bo‘lsa
+import Menyu from './pages/KassaUser/Menyu';
+import Logout from './pages/Chiqish/logout';
 
 function App() {
   const [role, setRole] = useState(null);
@@ -16,7 +16,7 @@ function App() {
   }, []);
 
   const PrivateRoute = ({ children, allowedRoles }) => {
-    if (role === null) return null; // kutish holati
+    if (role === null) return null;
     return allowedRoles.includes(role) ? children : <Navigate to="/" replace />;
   };
 
