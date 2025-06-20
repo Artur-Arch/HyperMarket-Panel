@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import SignIn from './pages/SignIn';
-import AdminPanel from './pages/AdminPanel';
-import DeliveryPanel from './pages/DeliveryPanel';
-import SkladPanel from './pages/SkladPanel';
-import Menyu from './pages/Menyu'; // kasir sahifasi
-import Logout from './pages/logout'; // mavjud bo‘lsa
+import SignIn from './pages/Kirish/SignIn';
+import AdminPanel from './pages/AdminPanel/AdminPanel';
+import DeliveryPanel from './pages/Dastafka/DeliveryPanel';
+import SkladPanel from './pages/Sklad/SkladPanel';
+import Menyu from './pages/KassaUser/Menyu'; // kasir sahifasi
+import Logout from './pages/Chiqish/logout'; // mavjud bo‘lsa
 
 function App() {
   const [role, setRole] = useState(null);
