@@ -1,124 +1,178 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  Edit3, 
-  Trash2, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Search,
+  Filter,
+  Plus,
+  Edit3,
+  Trash2,
   Package,
-  AlertCircle,
   CheckCircle,
   Clock,
-  Save,
+  AlertTriangle,
+  RotateCcw,
   X,
-  Eye
+  Save,
+  ScanLine,
+  Eye,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-const Inventory = () => {
+const PRODUCT_STATUSES = [
+  { value: 'IN_WAREHOUSE', label: 'Омборда' },
+  { value: 'IN_STORE', label: 'Дўконда' },
+  { value: 'SOLD', label: 'Сотилган' },
+  { value: 'DEFECTIVE', label: 'Брак' },
+  { value: 'RETURNED', label: 'Қайтарилган' },
+];
+
+const getStatusIcon = (status) => {
+  switch (status) {
+    case 'IN_WAREHOUSE':
+    case 'IN_STORE':
+      return CheckCircle;
+    case 'SOLD':
+      return Clock;
+    case 'DEFECTIVE':
+      return AlertTriangle;
+    case 'RETURNED':
+      return RotateCcw;
+    default:
+      return Package;
+  }
+};
+
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'IN_WAREHOUSE':
+    case 'IN_STORE':
+      return 'text-green-500';
+    case 'SOLD':
+      return 'text-blue-500';
+    case 'DEFECTIVE':
+      return 'text-red-500';
+    case 'RETURNED':
+      return 'text-yellow-500';
+    default:
+      return 'text-gray-500';
+  }
+};
+
+const getStatusText = (status) => {
+  const statusObj = PRODUCT_STATUSES.find((s) => s.value === status);
+  return statusObj ? statusObj.label : 'Номаълум';
+};
+
+const Inventory = ({ selectedBranchId: propSelectedBranchId }) => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showViewModal, setShowViewModal] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState(null);
   const [currentProduct, setCurrentProduct] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
   const [formData, setFormData] = useState({
     name: '',
-    category: '',
-    price: 0,
-    stock: 0,
-    minStock: 0,
-    supplier: '',
+    barcode: '',
     description: '',
-    sku: ''
+    categoryId: '',
+    branchId: propSelectedBranchId || localStorage.getItem('selectedBranchId') || '',
+    price: 0,
+    marketPrice: null,
+    quantity: 0,
+    status: 'IN_WAREHOUSE',
   });
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    propSelectedBranchId || localStorage.getItem('selectedBranchId') || ''
+  );
+  const nameInputRef = useRef(null);
+
+  const API_BASE_URL = 'https://suddocs.uz';
+
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      navigate('/login');
+      throw new Error('No token found. Please login again.');
+    }
+
+    const headers = {
+      ...options.headers,
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    };
+
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
+      navigate('/login');
+      throw new Error('Unauthorized: Session expired. Please login again.');
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+    }
+
+    return response;
+  };
+
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'selectedBranchId') {
+        setSelectedBranchId(e.newValue || '');
+        setFormData((prev) => ({ ...prev, branchId: e.newValue || '' }));
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (propSelectedBranchId !== undefined) {
+      setSelectedBranchId(propSelectedBranchId);
+      setFormData((prev) => ({ ...prev, branchId: propSelectedBranchId }));
+    }
+  }, [propSelectedBranchId]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
-        const productsData = [
-          {
-            id: '001',
-            name: 'iPhone 14 Pro',
-            category: 'Телефонлар',
-            price: 15000000,
-            stock: 25,
-            minStock: 10,
-            supplier: 'Apple Store',
-            status: 'in_stock',
-            lastUpdated: '2024-01-15',
-            description: 'Энг янги iPhone модели',
-            sku: 'APL-IP14P-128'
-          },
-          {
-            id: '002',
-            name: 'Samsung Galaxy S23',
-            category: 'Телефонлар',
-            price: 12500000,
-            stock: 8,
-            minStock: 15,
-            supplier: 'Samsung Uzbekistan',
-            status: 'low_stock',
-            lastUpdated: '2024-01-14',
-            description: 'Samsung энг янги флагман телефони',
-            sku: 'SAM-GS23-256'
-          },
-          {
-            id: '003',
-            name: 'MacBook Air M2',
-            category: 'Ноутбуклар',
-            price: 25000000,
-            stock: 0,
-            minStock: 5,
-            supplier: 'Apple Store',
-            status: 'out_of_stock',
-            lastUpdated: '2024-01-13',
-            description: 'M2 чип билан энг янги MacBook',
-            sku: 'APL-MBA-M2-512'
-          },
-          {
-            id: '004',
-            name: 'AirPods Pro 2',
-            category: 'Аксессуарлар',
-            price: 3500000,
-            stock: 45,
-            minStock: 20,
-            supplier: 'Apple Store',
-            status: 'in_stock',
-            lastUpdated: '2024-01-15',
-            description: 'Шовқинни бекор қилувчи қулоқчинлар',
-            sku: 'APL-APP2-WHT'
-          },
-          {
-            id: '005',
-            name: 'Dell XPS 13',
-            category: 'Ноутбуклар',
-            price: 18000000,
-            stock: 12,
-            minStock: 8,
-            supplier: 'Dell Technologies',
-            status: 'in_stock',
-            lastUpdated: '2024-01-14',
-            description: 'Юқори сифатли ультрабук',
-            sku: 'DEL-XPS13-I7'
-          }
-        ];
+        const [productsResponse, categoriesResponse, branchesResponse] = await Promise.all([
+          fetchWithAuth(`${API_BASE_URL}/products`),
+          fetchWithAuth(`${API_BASE_URL}/categories`),
+          fetchWithAuth(`${API_BASE_URL}/branches`),
+        ]);
 
-        const categoriesData = [
-          { id: 'telefonlar', name: 'Телефонлар', description: 'Смартфонлар ва мобил қурилмалар' },
-          { id: 'noutbuklar', name: 'Ноутбуклар', description: 'Ноутбук ва ультрабук компютерлар' },
-          { id: 'aksessuarlar', name: 'Аксессуарлар', description: 'Телефонлар ва компютерлар учун аксессуарлар' },
-          { id: 'planshets', name: 'Планшетлар', description: 'Планшет компютерлар' }
-        ];
+        const [productsData, categoriesData, branchesData] = await Promise.all([
+          productsResponse.json(),
+          categoriesResponse.json(),
+          branchesResponse.json(),
+        ]);
 
         setProducts(productsData);
         setCategories(categoriesData);
+        setBranches(branchesData);
+
+        if (selectedBranchId && !branchesData.some((b) => b.id.toString() === selectedBranchId)) {
+          setSelectedBranchId('');
+          localStorage.setItem('selectedBranchId', '');
+          setFormData((prev) => ({ ...prev, branchId: '' }));
+        }
       } catch (error) {
-        console.error('Маълумотларни юклашда хатолик:', error);
+        console.error('Error loading data:', error);
+        toast.danger('Маълумотларни юклашда хатолик юз берди: ' + error.message);
       } finally {
         setIsLoading(false);
       }
@@ -127,162 +181,197 @@ const Inventory = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (isModalOpen && (modalMode === 'add' || modalMode === 'edit') && nameInputRef.current) {
+      nameInputRef.current.focus();
+    }
+  }, [isModalOpen, modalMode]);
+
   const updateProductStatus = (product) => {
-    let status = 'in_stock';
-    if (product.stock === 0) {
-      status = 'out_of_stock';
-    } else if (product.stock <= product.minStock) {
-      status = 'low_stock';
+    if (PRODUCT_STATUSES.map((s) => s.value).includes(product.status)) {
+      return product;
+    }
+    let status = product.status;
+    if (product.quantity === 0) {
+      status = 'SOLD';
+    } else {
+      status = 'IN_WAREHOUSE';
     }
     return { ...product, status };
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'in_stock':
-        return <CheckCircle className="text-green-500" size={20} />;
-      case 'low_stock':
-        return <AlertCircle className="text-yellow-500" size={20} />;
-      case 'out_of_stock':
-        return <Clock className="text-red-500" size={20} />;
-      default:
-        return <Package className="text-gray-500" size={20} />;
-    }
-  };
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'in_stock':
-        return 'Мавжуд';
-      case 'low_stock':
-        return 'Кам қолди';
-      case 'out_of_stock':
-        return 'Тугатилган';
-      default:
-        return 'Номаълум';
-    }
-  };
-
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.supplier.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.sku?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+  const filteredProducts = products.filter((product) => {
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (product.barcode?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+    const matchesCategory =
+      selectedCategory === 'all' || product.categoryId.toString() === selectedCategory;
+    const matchesBranch = !selectedBranchId || product.branchId.toString() === selectedBranchId;
+    return matchesSearch && matchesCategory && matchesBranch;
   });
 
-  const handleAddProduct = () => {
-    if (!formData.name || !formData.category || !formData.supplier) {
-      alert('Илтимос, мажбурий майдонларни тўлдиринг!');
+  const handleAddProduct = async () => {
+    if (!formData.name || !formData.categoryId || !formData.branchId || !formData.status) {
+      toast.danger('Илтимос, мажбурий майдонларни тўлдиринг!');
       return;
     }
 
     const newProduct = {
-      id: (products.length + 1).toString().padStart(3, '0'),
       name: formData.name,
-      category: formData.category,
-      price: formData.price || 0,
-      stock: formData.stock || 0,
-      minStock: formData.minStock || 0,
-      supplier: formData.supplier,
-      status: 'in_stock',
-      lastUpdated: new Date().toISOString().split('T')[0],
-      description: formData.description || '',
-      sku: formData.sku || ''
+      barcode: formData.barcode || null,
+      description: formData.description || null,
+      categoryId: Number(formData.categoryId),
+      status: formData.status,
+      branchId: Number(formData.branchId),
+      price: Number(formData.price),
+      marketPrice: formData.marketPrice ? Number(formData.marketPrice) : null,
+      quantity: Number(formData.quantity),
     };
 
-    const updatedProduct = updateProductStatus(newProduct);
-    setProducts([...products, updatedProduct]);
-    setShowAddModal(false);
-    resetForm();
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/products`, {
+        method: 'POST',
+        body: JSON.stringify(newProduct),
+      });
+      const addedProduct = await response.json();
+      setProducts([...products, updateProductStatus(addedProduct)]);
+      setIsModalOpen(false);
+      resetForm();
+      toast.success(`${newProduct.name} маҳсулоти муваффақиятли қўшилди!`);
+    } catch (error) {
+      console.error('Error adding product:', error);
+      toast.danger('Маҳсулот қўшишда хатолик юз берди: ' + error.message);
+    }
   };
 
-  const handleEditProduct = () => {
-    if (!currentProduct || !formData.name || !formData.category || !formData.supplier) {
-      alert('Илтимос, мажбурий майдонларни тўлдиринг!');
+  const handleEditProduct = async () => {
+    if (!currentProduct || !formData.name || !formData.categoryId || !formData.branchId || !formData.status) {
+      toast.danger('Илтимос, мажбурий майдонларни тўлдиринг!');
       return;
     }
 
     const updatedProduct = {
-      ...currentProduct,
       name: formData.name,
-      category: formData.category,
-      price: formData.price || 0,
-      stock: formData.stock || 0,
-      minStock: formData.minStock || 0,
-      supplier: formData.supplier,
-      lastUpdated: new Date().toISOString().split('T')[0],
-      description: formData.description || '',
-      sku: formData.sku || ''
+      barcode: formData.barcode || null,
+      description: formData.description || null,
+      categoryId: Number(formData.categoryId),
+      status: formData.status,
+      branchId: Number(formData.branchId),
+      price: Number(formData.price),
+      marketPrice: formData.marketPrice ? Number(formData.marketPrice) : null,
+      quantity: Number(formData.quantity),
     };
 
-    const finalProduct = updateProductStatus(updatedProduct);
-    setProducts(products.map(p => p.id === currentProduct.id ? finalProduct : p));
-    setShowEditModal(false);
-    setCurrentProduct(null);
-    resetForm();
+    try {
+      const response = await fetchWithAuth(`${API_BASE_URL}/products/${currentProduct.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updatedProduct),
+      });
+      const updatedData = await response.json();
+      setProducts(
+        products.map((p) => (p.id === currentProduct.id ? updateProductStatus(updatedData) : p))
+      );
+      setIsModalOpen(false);
+      setCurrentProduct(null);
+      resetForm();
+      toast.success(`${updatedProduct.name} маҳсулоти муваффақиятли янгиланди!`);
+    } catch (error) {
+      console.error('Error updating product:', error);
+      toast.danger('Маҳсулотни янгилашда хатолик юз берди: ' + error.message);
+    }
   };
 
-  const handleDeleteProduct = (productId) => {
+  const handleDeleteProduct = async (productId) => {
     if (window.confirm('Бу маҳсулотни ўчиришни хоҳлайсизми?')) {
-      setProducts(products.filter(p => p.id !== productId));
+      try {
+        await fetchWithAuth(`${API_BASE_URL}/products/${productId}`, {
+          method: 'DELETE',
+        });
+        setProducts(products.filter((p) => p.id !== productId));
+        toast.success('Маҳсулот муваффақиятли ўчирилди!');
+      } catch (error) {
+        console.error('Error deleting product:', error);
+        toast.danger('Маҳсулотни ўчиришда хатолик юз берди: ' + error.message);
+      }
     }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetchWithAuth(`${API_BASE_URL}/products`);
+      const updatedProducts = await response.json();
+      setProducts(updatedProducts.map((product) => updateProductStatus(product)));
+    } catch (error) {
+      console.error('Error refreshing products:', error);
+      toast.danger('Маҳсулотларни янгилашда хатолик юз берди: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleScanBarcode = () => {
+    const scannedBarcode = prompt('Штрих-кодни киритинг (сканер симуляцияси):');
+    if (scannedBarcode) {
+      setFormData((prev) => ({ ...prev, barcode: scannedBarcode }));
+    }
+  };
+
+  const openAddModal = () => {
+    setModalMode('add');
+    setIsModalOpen(true);
+    resetForm();
   };
 
   const openEditModal = (product) => {
     setCurrentProduct(product);
     setFormData({
       name: product.name,
-      category: product.category,
-      price: product.price,
-      stock: product.stock,
-      minStock: product.minStock,
-      supplier: product.supplier,
+      barcode: product.barcode || '',
       description: product.description || '',
-      sku: product.sku || ''
+      categoryId: product.categoryId.toString(),
+      branchId: product.branchId.toString(),
+      price: product.price,
+      marketPrice: product.marketPrice || '',
+      quantity: product.quantity,
+      status: product.status,
     });
-    setShowEditModal(true);
+    setModalMode('edit');
+    setIsModalOpen(true);
   };
 
   const openViewModal = (product) => {
     setCurrentProduct(product);
-    setShowViewModal(true);
+    setModalMode('view');
+    setIsModalOpen(true);
   };
 
   const resetForm = () => {
     setFormData({
       name: '',
-      category: '',
-      price: 0,
-      stock: 0,
-      minStock: 0,
-      supplier: '',
+      barcode: '',
       description: '',
-      sku: ''
+      categoryId: '',
+      branchId: selectedBranchId,
+      price: 0,
+      marketPrice: null,
+      quantity: 0,
+      status: 'IN_WAREHOUSE',
     });
   };
 
-  const Modal = ({ isOpen, onClose, title, children }) => {
-    if (!isOpen) return null;
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setCurrentProduct(null);
+    resetForm();
+  };
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center p-6 border-b">
-            <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div className="p-6">
-            {children}
-          </div>
-        </div>
-      </div>
-    );
+  const handleModalSave = () => {
+    if (modalMode === 'add') {
+      handleAddProduct();
+    } else if (modalMode === 'edit') {
+      handleEditProduct();
+    }
   };
 
   if (isLoading) {
@@ -294,28 +383,40 @@ const Inventory = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-0 flex flex-col justify-center items-center gap-5">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Инвентар Бошқаруви</h1>
           <p className="text-gray-600 mt-1">Маҳсулотлар ва захираларни бошқаринг</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 transform hover:scale-105"
-        >
-          <Plus size={20} className="mr-2" />
-          Янги Маҳсулот
-        </button>
+        <div className="flex gap-4">
+          <button
+            onClick={handleRefresh}
+            className="flex items-center px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all duration-200 transform hover:scale-105"
+          >
+            <RotateCcw size={20} className="mr-2" />
+            Янгилаш
+          </button>
+          <button
+            onClick={openAddModal}
+            className="flex items-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 transform hover:scale-105"
+          >
+            <Plus size={20} className="mr-2" />
+            Янги Маҳсулот
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 w-full">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <input
               type="text"
-              placeholder="Маҳсулот номи, SKU ёки таъминотчи бўйича қидиринг..."
+              placeholder="Маҳсулот номи ёки штрих-код бўйича қидиринг..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
@@ -330,8 +431,8 @@ const Inventory = () => {
                 className="border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
               >
                 <option value="all">Барча категорилар</option>
-                {categories.map(category => (
-                  <option key={category.id} value={category.name}>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
                     {category.name}
                   </option>
                 ))}
@@ -341,7 +442,7 @@ const Inventory = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 w-full">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center">
             <div className="p-3 bg-blue-50 rounded-lg mr-4">
@@ -349,7 +450,7 @@ const Inventory = () => {
             </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Жами Маҳсулотлар</p>
-              <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{filteredProducts.length}</p>
             </div>
           </div>
         </div>
@@ -359,22 +460,23 @@ const Inventory = () => {
               <CheckCircle className="text-green-600" size={24} />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">Мавжуд</p>
+              <p className="text-sm font-medium text-gray-600">Омборда / Дўконда</p>
               <p className="text-2xl font-bold text-gray-900">
-                {products.filter(p => p.status === 'in_stock').length}
+                {filteredProducts.filter((p) => p.status === 'IN_WAREHOUSE' || p.status === 'IN_STORE')
+                  .length}
               </p>
             </div>
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center">
-            <div className="p-3 bg-yellow-50 rounded-lg mr-4">
-              <AlertCircle className="text-yellow-600" size={24} />
+            <div className="p-3 bg-blue-50 rounded-lg mr-4">
+              <Clock className="text-blue-600" size={24} />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">Кам Қолган</p>
+              <p className="text-sm font-medium text-gray-600">Сотилган</p>
               <p className="text-2xl font-bold text-gray-900">
-                {products.filter(p => p.status === 'low_stock').length}
+                {filteredProducts.filter((p) => p.status === 'SOLD').length}
               </p>
             </div>
           </div>
@@ -382,19 +484,32 @@ const Inventory = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-200">
           <div className="flex items-center">
             <div className="p-3 bg-red-50 rounded-lg mr-4">
-              <Clock className="text-red-600" size={24} />
+              <AlertTriangle className="text-red-600" size={24} />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-600">Тугатилган</p>
+              <p className="text-sm font-medium text-gray-600">Брак</p>
               <p className="text-2xl font-bold text-gray-900">
-                {products.filter(p => p.status === 'out_of_stock').length}
+                {filteredProducts.filter((p) => p.status === 'DEFECTIVE').length}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-200">
+          <div className="flex items-center">
+            <div className="p-3 bg-yellow-50 rounded-lg mr-4">
+              <RotateCcw className="text-yellow-600" size={24} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Қайтарилган</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {filteredProducts.filter((p) => p.status === 'RETURNED').length}
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden w-full">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
@@ -406,7 +521,10 @@ const Inventory = () => {
                   Категория
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Нарx
+                  Нарx (Олинган)
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Нарx (Сотув)
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Захира
@@ -415,7 +533,7 @@ const Inventory = () => {
                   Ҳолат
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Таъминотчи
+                  Филиал
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Амаллар
@@ -424,53 +542,63 @@ const Inventory = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredProducts.map((product) => (
-                <tr key={product.id} className="hover:bg-gray-50 transition-colors duration-150">
+                <tr
+                  key={product.id}
+                  className="hover:bg-gray-50 transition-colors duration-150"
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{product.name}</div>
                     <div className="text-sm text-gray-500">
-                      ID: {product.id} {product.sku && `• SKU: ${product.sku}`}
+                      ID: {product.id} {product.barcode && `• Штрих-код: ${product.barcode}`}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
-                      {product.category}
+                      {categories.find((c) => c.id === product.categoryId)?.name || 'Номаълум'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {product.price.toLocaleString()} сўм
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {product.marketPrice ? `${product.marketPrice.toLocaleString()} сўм` : 'Белгиланмаган'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">{product.stock} дона</div>
-                    <div className="text-xs text-gray-500">Мин: {product.minStock}</div>
+                    <div className="text-sm font-medium text-gray-900">{product.quantity} дона</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      {getStatusIcon(product.status)}
+                      {getStatusIcon(product.status) && (
+                        React.createElement(getStatusIcon(product.status), {
+                          className: getStatusColor(product.status),
+                          size: 20,
+                        })
+                      )}
                       <span className="ml-2 text-sm text-gray-700">
                         {getStatusText(product.status)}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {product.supplier}
+                    {branches.find((b) => b.id === product.branchId)?.name || 'Номаълум'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
-                      <button 
+                      <button
                         onClick={() => openViewModal(product)}
                         className="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-100 transition-all duration-200"
                         title="Кўриш"
                       >
                         <Eye size={16} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => openEditModal(product)}
                         className="text-blue-600 hover:text-blue-900 p-2 rounded-lg hover:bg-blue-50 transition-all duration-200"
                         title="Таҳрирлаш"
                       >
                         <Edit3 size={16} />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDeleteProduct(product.id)}
                         className="text-red-600 hover:text-red-900 p-2 rounded-lg hover:bg-red-50 transition-all duration-200"
                         title="Ўчириш"
@@ -493,384 +621,322 @@ const Inventory = () => {
         )}
       </div>
 
-      <Modal
-        isOpen={showAddModal}
-        onClose={() => { setShowAddModal(false); resetForm(); }}
-        title="Янги Маҳсулот Қўшиш"
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Маҳсулот номи *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Маҳсулот номини киритинг"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                SKU
-              </label>
-              <input
-                type="text"
-                value={formData.sku}
-                onChange={(e) => setFormData({...formData, sku: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Маҳсулот SKU"
-              />
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Категория *
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({...formData, category: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Категорияни танланг</option>
-                {categories.map(category => (
-                  <option key={category.id} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Таъминотчи *
-              </label>
-              <input
-                type="text"
-                value={formData.supplier}
-                onChange={(e) => setFormData({...formData, supplier: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Таъминотчи номи"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Нарx (сўм)
-              </label>
-              <input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Захира (дона)
-              </label>
-              <input
-                type="number"
-                value={formData.stock}
-                onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Мин. захира
-              </label>
-              <input
-                type="number"
-                value={formData.minStock}
-                onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Тавсиф
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              rows={3}
-              placeholder="Маҳсулот ҳақида қўшимча маълумот"
-            />
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              onClick={() => { setShowAddModal(false); resetForm(); }}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
-            >
-              Бекор қилиш
-            </button>
-            <button
-              onClick={handleAddProduct}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-            >
-              <Save size={16} className="mr-2" />
-              Сақлаш
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={showEditModal}
-        onClose={() => { setShowEditModal(false); setCurrentProduct(null); resetForm(); }}
-        title="Маҳсулотни Таҳрирлаш"
-      >
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Маҳсулот номи *
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Маҳсулот номини киритинг"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                SKU
-              </label>
-              <input
-                type="text"
-                value={formData.sku}
-                onChange={(e) => setFormData({...formData, sku: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Маҳсулот SKU"
-              />
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Категория *
-              </label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({...formData, category: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Категорияни танланг</option>
-                {categories.map(category => (
-                  <option key={category.id} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Таъминотчи *
-              </label>
-              <input
-                type="text"
-                value={formData.supplier}
-                onChange={(e) => setFormData({...formData, supplier: e.target.value})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Таъминотчи номи"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Нарx (сўм)
-              </label>
-              <input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({...formData, price: Number(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Захира (дона)
-              </label>
-              <input
-                type="number"
-                value={formData.stock}
-                onChange={(e) => setFormData({...formData, stock: Number(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Мин. захира
-              </label>
-              <input
-                type="number"
-                value={formData.minStock}
-                onChange={(e) => setFormData({...formData, minStock: Number(e.target.value)})}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="0"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Тавсиф
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              rows={3}
-              placeholder="Маҳсулот ҳақида қўшимча маълумот"
-            />
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              onClick={() => { setShowEditModal(false); setCurrentProduct(null); resetForm(); }}
-              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
-            >
-              Бекор қилиш
-            </button>
-            <button
-              onClick={handleEditProduct}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-            >
-              <Save size={16} className="mr-2" />
-              Янгилаш
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={showViewModal}
-        onClose={() => { setShowViewModal(false); setCurrentProduct(null); }}
-        title="Маҳсулот Маълумотлари"
-      >
-        {currentProduct && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Маҳсулот номи
-                  </label>
-                  <p className="text-lg font-semibold text-gray-900">{currentProduct.name}</p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    ID / SKU
-                  </label>
-                  <p className="text-gray-900">
-                    {currentProduct.id} {currentProduct.sku && `• ${currentProduct.sku}`}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Категория
-                  </label>
-                  <span className="inline-block px-3 py-1 text-sm font-medium bg-gray-100 text-gray-800 rounded-full">
-                    {currentProduct.category}
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Таъминотчи
-                  </label>
-                  <p className="text-gray-900">{currentProduct.supplier}</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Нарx
-                  </label>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {currentProduct.price.toLocaleString()} сўм
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Захира
-                  </label>
-                  <p className="text-gray-900">
-                    {currentProduct.stock} дона 
-                    <span className="text-sm text-gray-500 ml-2">
-                      (Мин: {currentProduct.minStock})
-                    </span>
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Ҳолат
-                  </label>
-                  <div className="flex items-center">
-                    {getStatusIcon(currentProduct.status)}
-                    <span className="ml-2 text-gray-900">
-                      {getStatusText(currentProduct.status)}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">
-                    Охирги янгиланиш
-                  </label>
-                  <p className="text-gray-900">{currentProduct.lastUpdated}</p>
-                </div>
-              </div>
-            </div>
-
-            {currentProduct.description && (
-              <div>
-                <label className="block text-sm font-medium text-gray-500 mb-2">
-                  Тавсиф
-                </label>
-                <p className="text-gray-900 bg-gray-50 p-4 rounded-lg">
-                  {currentProduct.description}
-                </p>
-              </div>
-            )}
-
-            <div className="flex justify-end space-x-3 pt-4 border-t">
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh]">
+            <div className="flex justify-between items-center p-6 border-b">
+              <h2 className="text-xl font-bold text-gray-900">
+                {modalMode === 'add'
+                  ? 'Янги Маҳсулот Қўшиш'
+                  : modalMode === 'edit'
+                  ? 'Маҳсулотни Таҳрирлаш'
+                  : 'Маҳсулот Маълумотлари'}
+              </h2>
               <button
-                onClick={() => { setShowViewModal(false); openEditModal(currentProduct); }}
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                onClick={handleModalClose}
+                className="text-gray-400 hover:text-red-700 p-1 rounded-full hover:bg-gray-100"
               >
-                <Edit3 size={16} className="mr-2" />
-                Таҳрирлаш
+                <X size={20} />
               </button>
             </div>
+            <div className="p-6">
+              {modalMode === 'view' && currentProduct ? (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-0">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Маҳсулот номи
+                        </label>
+                        <p className="text-lg font-semibold text-gray-900">{currentProduct.name}</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          ID / Штрих-код
+                        </label>
+                        <p className="text-gray-900">
+                          {currentProduct.id}{' '}
+                          {currentProduct.barcode && ` /  ${currentProduct.barcode}`}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Категория
+                        </label>
+                        <span className="inline-block px-3 py-1 text-sm font-medium bg-gray-100 text-gray-800 rounded-full">
+                          {categories.find((c) => c.id === currentProduct.categoryId)?.name ||
+                            'Номаълум'}
+                        </span>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Филиал
+                        </label>
+                        <p className="text-gray-900">
+                          {branches.find((b) => b.id === currentProduct.branchId)?.name ||
+                            'Номаълум'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Нарx (Олинган)
+                        </label>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {currentProduct.price.toLocaleString()} сўм
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Нарx (Сотув)
+                        </label>
+                        <p className="text-lg font-semibold text-gray-900">
+                          {currentProduct.marketPrice
+                            ? `${currentProduct.marketPrice.toLocaleString()} сўм`
+                            : 'Белгиланмаган'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Захира
+                        </label>
+                        <p className="text-gray-900">{currentProduct.quantity} дона</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Ҳолат
+                        </label>
+                        <div className="flex items-center">
+                          {React.createElement(getStatusIcon(currentProduct.status), {
+                            className: getStatusColor(currentProduct.status),
+                            size: 20,
+                          })}
+                          <span className="ml-2 text-gray-900">
+                            {getStatusText(currentProduct.status)}
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-500 mb-1">
+                          Охирги янгиланиш
+                        </label>
+                        <p className="text-gray-900">
+                          {new Date(currentProduct.updatedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {currentProduct.description && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-500 mb-2">
+                        Тавсиф
+                      </label>
+                      <p className="text-gray-900 bg-gray-50 p-4 rounded-lg">
+                        {currentProduct.description}
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex justify-end space-x-3 pt-4 border-t">
+                    <button
+                      onClick={() => openEditModal(currentProduct)}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                    >
+                      <Edit3 size={16} className="mr-2" />
+                      Таҳрирлаш
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Маҳсулот номи *
+                      </label>
+                      <input
+                        type="text"
+                        ref={nameInputRef}
+                        value={formData.name}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Маҳсулот номини киритинг"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Штрих-код
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.barcode}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, barcode: e.target.value }))
+                          }
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Штрих-код"
+                        />
+                      </div>
+                      <button
+                        onClick={handleScanBarcode}
+                        className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 color-customBlue hover:text-gray-800 transition-all duration-200"
+                        title="Штрих-кодни сканерлаш"
+                      >
+                        <ScanLine size={26} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Категория *
+                      </label>
+                      <select
+                        value={formData.categoryId}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, categoryId: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Категорияни танланг</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Филиал *
+                      </label>
+                      <select
+                        value={formData.branchId}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, branchId: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        disabled={selectedBranchId !== ''}
+                      >
+                        <option value="">Филиални танланг</option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Нарx (Олинган, сўм)
+                      </label>
+                      <input
+                        min="0"
+                        type="number"
+                        value={formData.price}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, price: Number(e.target.value) }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Нарx (Сотув, сўм)
+                      </label>
+                      <input
+                        min="0"
+                        type="number"
+                        value={formData.marketPrice || ''}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            marketPrice: e.target.value ? Number(e.target.value) : null,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Сотув нарxини киритинг (ихтиёрий)"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Захира (дона)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.quantity}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, quantity: Number(e.target.value) }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Ҳолат *
+                      </label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, status: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Ҳолатни танланг</option>
+                        {PRODUCT_STATUSES.map((status) => (
+                          <option key={status.value} value={status.value}>
+                            {status.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Тавсиф
+                    </label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, description: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={3}
+                      placeholder="Маҳсулот ҳақида қўшимча маълумот"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={handleModalClose}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+                    >
+                      Бекор қилиш
+                    </button>
+                    <button
+                      onClick={handleModalSave}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                    >
+                      <Save size={16} className="mr-2" />
+                      {modalMode === 'add' ? 'Сақлаш' : 'Янгилаш'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </Modal>
+        </div>
+      )}
+      <ToastContainer position="top-right" autoClose={3000} />
     </div>
   );
 };

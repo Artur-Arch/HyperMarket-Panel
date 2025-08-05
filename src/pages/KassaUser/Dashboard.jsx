@@ -9,14 +9,7 @@ import {
   LayoutGrid,
 } from "lucide-react";
 
-const StatCard = ({
-  title,
-  value,
-  change,
-  isPositive,
-  icon: Icon,
-  totalAmount,
-}) => (
+const StatCard = ({ title, value, change, isPositive, icon: Icon, totalAmount }) => (
   <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow duration-200 flex flex-col justify-between">
     <div className="flex items-center justify-between">
       <div>
@@ -29,11 +22,12 @@ const StatCard = ({
     </div>
     {totalAmount !== undefined && (
       <p className="mt-4 text-sm text-gray-700 font-semibold border-t border-gray-200 pt-3">
-        Жами сумма: {(totalAmount || 0).toLocaleString()} сўм
+        Жами сумма: {totalAmount.toLocaleString()} сўм
       </p>
     )}
   </div>
 );
+
 
 const Dashboard = () => {
   const [products, setProducts] = useState([]);
@@ -43,16 +37,17 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem("access_token");
 
-  const soldProducts = products
+    const soldProducts = products
     .filter((product) => product.status === "SOLD")
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     .slice(0, 5);
 
-  const totalSoldAmount = soldProducts.reduce((acc, item) => {
-    const price = parseFloat(item.price) || 0;
-    const quantity = parseFloat(item.quantity) || 0;
-    return acc + price * quantity;
-  }, 0);
+const totalSoldAmount = soldProducts.reduce((acc, item) => {
+  const price = parseFloat(item.price) || 0;
+  const quantity = parseFloat(item.quantity) || 0;
+  return acc + (price * quantity);
+}, 0);
+
 
   const fetchData = async () => {
     if (!token) return;
@@ -114,43 +109,44 @@ const Dashboard = () => {
       branch: getBranchName(product.branchId),
     }));
 
-  const stats = [
-    {
-      title: "Филиаллар сони",
-      value: branches.length.toString(),
-      isPositive: true,
-      icon: Building2,
-    },
-    {
-      title: "Маҳсулотлар сони",
-      value: products.length.toString(),
-      change: "+0%",
-      isPositive: true,
-      icon: Package,
-    },
-    {
-      title: "Категориялар",
-      value: categories.length.toString(),
-      change: "+0%",
-      isPositive: true,
-      icon: LayoutGrid,
-    },
-    {
-      title: "Сотилган маҳсулотлар",
-      value: soldProducts.length.toString(),
-      change: "-0%",
-      isPositive: false,
-      icon: ShoppingCart,
-      totalAmount: totalSoldAmount,
-    },
-  ];
+const stats = [
+  {
+    title: "Филиаллар сони",
+    value: branches.length.toString(),
+    isPositive: true,
+    icon: Building2,
+  },
+  {
+    title: "Маҳсулотлар сони",
+    value: products.length.toString(),
+    change: "+0%",
+    isPositive: true,
+    icon: Package,
+  },
+  {
+    title: "Категориялар",
+    value: categories.length.toString(),
+    change: "+0%",
+    isPositive: true,
+    icon: LayoutGrid,
+  },
+  {
+    title: "Сотилган маҳсулотлар",
+    value: soldProducts.length.toString(),
+    change: "-0%",
+    isPositive: false,
+    icon: ShoppingCart,
+    totalAmount: totalSoldAmount
+  }
+];
+
 
   function formatPrice(number) {
     return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   }
 
   return (
-    <div className="space-y-6">
+    <div  style={{marginLeft: "250px"}} className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Бошқарув Панели</h1>
@@ -169,87 +165,76 @@ const Dashboard = () => {
         ))}
       </div>
 
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Sales */}
-        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-6 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Сўнгги Сотувлар
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[700px]">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Маҳсулот
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Миқдор
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Нархи
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Филиал
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Сана / Вақт
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {soldProducts.length > 0 ? (
-                  soldProducts.map((item) => {
-                    const branch = branches.find((b) => b.id === item.branchId);
-                    return (
-                      <tr
-                        key={item.id}
-                        className="hover:bg-gray-50 transition-colors duration-150"
-                      >
-                        <td className="px-6 py-4 text-gray-900">{item.name}</td>
-                        <td className="px-6 py-4 text-gray-700">
-                          {item.quantity} шт
-                        </td>
-                        <td className="px-6 py-4 text-gray-700">
-                          {item.price?.toLocaleString()} сўм
-                        </td>
-                        <td className="px-6 py-4 text-gray-700">
-                          {branch ? branch.name : "Филиал топилмади"}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-gray-900">
-                            {new Date(item.updatedAt).toLocaleDateString(
-                              "uz-Cyrl-UZ"
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(item.updatedAt).toLocaleTimeString(
-                              "uz-Cyrl-UZ",
-                              {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-4 text-center text-gray-500"
-                    >
-                      Сотилган маҳсулотлар йўқ
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+<div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+  <div className="p-6 border-b border-gray-100">
+    <h3 className="text-lg font-semibold text-gray-900">
+      Сўнгги Сотувлар
+    </h3>
+  </div>
+  <div className="overflow-x-auto">
+    <table className="w-full text-sm min-w-[700px]">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Маҳсулот
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Миқдор
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Нархи
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Филиал
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Сана / Вақт
+          </th>
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {soldProducts.length > 0 ? (
+          soldProducts.map((item) => {
+            const branch = branches.find(b => b.id === item.branchId);
+            return (
+              <tr key={item.id} className="hover:bg-gray-50 transition-colors duration-150">
+                <td className="px-6 py-4 text-gray-900">{item.name}</td>
+                <td className="px-6 py-4 text-gray-700">{item.quantity} шт</td>
+                <td className="px-6 py-4 text-gray-700">
+                  {item.price?.toLocaleString()} сўм
+                </td>
+                <td className="px-6 py-4 text-gray-700">
+                  {branch ? branch.name : 'Филиал топилмади'}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-gray-900">
+                    {new Date(item.updatedAt).toLocaleDateString('uz-Cyrl-UZ')}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {new Date(item.updatedAt).toLocaleTimeString('uz-Cyrl-UZ', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                </td>
+              </tr>
+            );
+          })
+        ) : (
+          <tr>
+            <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+              Сотилган маҳсулотлар йўқ
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 
         {/* Low Stock */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100">

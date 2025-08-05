@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Package,
@@ -9,71 +10,263 @@ import {
   Search,
   Bell,
   Settings as SettingsIcon,
-  LogOut,
   Menu,
   X,
   CreditCard,
-  Building2
-} from 'lucide-react';
-
-import Dashboard from './pages/Dashboard';
-import Inventory from './pages/Inventory';
-import Sales from './pages/Sales';
-import Customers from './pages/Customers';
-import Employees from './pages/Employees';
-import Reports from './pages/Reports';
-import Debts from './pages/Debts';
-import Branches from './pages/Branches';
-import Settings from './pages/Settings';
-import Chiqish from '../Chiqish/logout';
+  Building2,
+  LogOut,
+  Loader,
+  MapPin,
+} from "lucide-react";
+import LocationApp from "./pages/LocationApp";
+import Dashboard from "./pages/Dashboard";
+import Inventory from "./pages/Inventory";
+import Sales from "./pages/Sales";
+import Customers from "./pages/Customers";
+import Employees from "./pages/Employees";
+import Reports from "./pages/Reports";
+import Debts from "./pages/Debts";
+import Branches from "./pages/Branches";
+import Settings from "./pages/Settings";
+import Logout from "../Chiqish/logout";
 
 export default function AdminPanel() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [selectedBranchId, setSelectedBranchId] = useState(() => {
+    return localStorage.getItem("selectedBranchId") || "";
+  });
+  const [branches, setBranches] = useState([
+    { id: "", name: "Барча филиаллар" },
+  ]);
+  const [error, setError] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(
+    !!localStorage.getItem("access_token")
+  );
+  const [userName, setUserName] = useState("");
 
-  const navigation = [
-    { id: 'dashboard', name: "Бошқарув панели", icon: LayoutDashboard },
-    { id: 'inventory', name: "Инвентар", icon: Package },
-    { id: 'sales', name: "Сотувлар", icon: ShoppingCart },
-    { id: 'customers', name: "Мижозлар", icon: Users },
-    { id: 'employees', name: "Ходимлар", icon: UserCog },
-    { id: 'debts', name: "Қарздорлик", icon: CreditCard },
-    { id: 'branches', name: "Филиаллар", icon: Building2 },
-    { id: 'reports', name: "Ҳисоботлар", icon: TrendingUp },
-    { id: 'settings', name: "Созламалар", icon: SettingsIcon }
-  ];
+  const navigate = useNavigate();
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'inventory':
-        return <Inventory />;
-      case 'sales':
-        return <Sales />;
-      case 'customers':
-        return <Customers />;
-      case 'employees':
-        return <Employees />;
-      case 'debts':
-        return <Debts />;
-      case 'branches':
-        return <Branches />;
-      case 'reports':
-        return <Reports />;
-      case 'settings':
-        return <Settings />;
-      default:
-        return <Dashboard />;
+  useEffect(() => {
+    const user = localStorage.getItem("user");
+    if (user) {
+      try {
+        const parsedUser = JSON.parse(user);
+        setUserName(parsedUser.name || "User");
+      } catch (e) {
+        setUserName(user || "User");
+      }
+    } else {
+      setUserName("User");
+    }
+  }, []);
+
+  const validateToken = async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setIsAuthenticated(false);
+      navigate("/login");
+      return false;
+    }
+
+    try {
+      const response = await fetch("https://suddocs.uz/auth/profile", {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("user");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("selectedBranchId");
+        setIsAuthenticated(false);
+        navigate("/login");
+        return false;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to validate token");
+      }
+
+      setIsAuthenticated(true);
+      return true;
+    } catch (err) {
+      console.error("Token validation error:", err);
+      setIsAuthenticated(false);
+      navigate("/login");
+      return false;
     }
   };
 
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setIsAuthenticated(false);
+      navigate("/login");
+      throw new Error("No token found. Please login again.");
+    }
+
+    const headers = {
+      ...options.headers,
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      const isValid = await validateToken();
+      if (!isValid) {
+        throw new Error("Unauthorized: Session expired. Please login again.");
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+    }
+
+    return response;
+  };
+
+  useEffect(() => {
+    validateToken();
+  }, []);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const response = await fetchWithAuth("https://suddocs.uz/branches");
+        const data = await response.json();
+        setBranches([{ id: "", name: "Барча филиаллар" }, ...data]);
+        if (
+          selectedBranchId &&
+          !data.some((branch) => branch.id.toString() === selectedBranchId)
+        ) {
+          setSelectedBranchId("");
+          localStorage.setItem("selectedBranchId", "");
+        }
+      } catch (err) {
+        setError(err.message || "Failed to fetch branches");
+        console.error("Error fetching branches:", err);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchBranches();
+    }
+  }, [isAuthenticated, selectedBranchId]);
+
+  useEffect(() => {
+    localStorage.setItem("selectedBranchId", selectedBranchId);
+
+    const handleStorageChange = (e) => {
+      if (e.key === "selectedBranchId") {
+        setSelectedBranchId(e.newValue || "");
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [selectedBranchId]);
+
+  const navigation = [
+    { id: "dashboard", name: "Бошқарув панели", icon: LayoutDashboard },
+    { id: "inventory", name: "Инвентар", icon: Package },
+    { id: "employees", name: "Ходимлар", icon: UserCog },
+    { id: "debts", name: "Қарздорлик", icon: CreditCard },
+    { id: "branches", name: "Филиаллар", icon: Building2 },
+    { id: "reports", name: "Ҳисобот", icon: TrendingUp },
+    // { id: "geolocation", name: "Доставщиклар", icon: MapPin },
+    { id: "settings", name: "Созламалар", icon: SettingsIcon },
+  ];
+
+  const handleLogoutConfirm = () => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("user");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("selectedBranchId");
+    setIsAuthenticated(false);
+    navigate("/login");
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutModal(false);
+  };
+
+  const handleBranchChange = (e) => {
+    setSelectedBranchId(e.target.value);
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "dashboard":
+        return <Dashboard selectedBranchId={selectedBranchId} />;
+      case "inventory":
+        return <Inventory selectedBranchId={selectedBranchId} />;
+      case "employees":
+        return <Employees selectedBranchId={selectedBranchId} />;
+      case "debts":
+        return <Debts selectedBranchId={selectedBranchId} />;
+      case "branches":
+        return <Branches selectedBranchId={selectedBranchId} />;
+      case "reports":
+        return <Reports selectedBranchId={selectedBranchId} />;
+      case "geolocation":
+        return (
+          <LocationApp
+            token={localStorage.getItem("access_token")}
+            selectedBranchId={selectedBranchId}
+          />
+        );
+      case "settings":
+        return <Settings selectedBranchId={selectedBranchId} />;
+      default:
+        return <Dashboard selectedBranchId={selectedBranchId} />;
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <Loader className="w-16 h-16 mx-auto mt-20 text-blue-500 animate-spin" />
+    );
+  }
+
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const userNamee = user.name || "Dr. Rodriguez";
+  const userRole = localStorage.getItem("userRole") || "Kassir";
+  // Generate initials from the name
+  const initials = userName
+    .split(" ")
+    .map((word) => word.charAt(0))
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
   return (
     <div className="flex h-screen bg-gray-50">
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
+      <div
+        className={`${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}
+      >
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200 mt-3">
-          <h1 className="text-xl font-bold text-gray-900 mb-0">Дўкон Тизими</h1>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 bg-[#1178f8] rounded-lg flex items-center justify-center">
+              <Package className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Aminov</h1>
+              <p className="text-sm text-gray-600">Boshqarma Tizimi</p>
+            </div>
+          </div>
           <button
             onClick={() => setSidebarOpen(false)}
             className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600"
@@ -92,10 +285,10 @@ export default function AdminPanel() {
                   setActiveTab(item.id);
                   setSidebarOpen(false);
                 }}
-                className={`w-full flex items-center px-4 py-3 mb-2 text-left rounded-lg transition-colors duration-200 ${
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${
                   activeTab === item.id
-                    ? 'bg-blue-50 text-blue-700 border-r-4 border-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? "bg-[#1178f8] bg-opacity-10 text-[#1178f8] border border-[#1178f8] border-opacity-20"
+                    : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                 }`}
               >
                 <Icon size={20} className="mr-3" />
@@ -107,8 +300,10 @@ export default function AdminPanel() {
 
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
           <div className="flex items-center justify-between">
-
-            <button className="flex items-center justify-between p-2 text-gray-400 hover:text-red-600 rounded-md ml-2">
+            <button
+              onClick={() => setShowLogoutModal(true)}
+              className="flex items-center justify-between p-1 text-gray-400 hover:text-red-600 rounded-md ml-2"
+            >
               <LogOut size={20} />
               <span className="ml-2">Чиқиш</span>
             </button>
@@ -116,7 +311,6 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
@@ -124,48 +318,66 @@ export default function AdminPanel() {
         />
       )}
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="bg-white shadow-sm bg-white border-b">
-          <div className="flex justify-between items-center px-6 py-4">
-            <div className="flex items-center">
+        <header className="bg-white shadow-sm border-b">
+          <div className="flex flex-wrap justify-between items-center px-6 py-3 gap-y-2">
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
               <button
                 onClick={() => setSidebarOpen(true)}
                 className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600 mr-2"
               >
                 <Menu size={20} />
               </button>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform - translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Қидириш..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-64"
-                />
-              </div>
+              <select
+                value={selectedBranchId}
+                onChange={handleBranchChange}
+                className="border border-gray-300 rounded-lg py-2 px-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={error}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+              {error && (
+                <span className="ml-2 text-red-500 text-sm">{error}</span>
+              )}
             </div>
 
-            <div className="flex items-center space-x-4">
-              <button className="relative p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
-                <Bell size={20} />
-                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400"></span>
-              </button>
+            <div className="flex items-center space-x-4 w-full justify-end lg:w-auto">
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                  A
+                <div
+                  style={{ marginBottom: "5px" }}
+                  className="flex items-center space-x-3"
+                >
+                  <div className="w-10 h-10 bg-[#1178f8] rounded-full flex items-center justify-center">
+                    <span className="text-sm font-medium text-white">
+                      {initials}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {userNamee}
+                    </p>
+                    <p className="text-xxs text-gray-600">
+                      {userRole === "CASHIER" ? "Kassir" : userRole || "Kassir"}
+                    </p>
+                  </div>
                 </div>
-                <span className="ml-2 text-sm font-medium text-gray-700">Admin User</span>
               </div>
             </div>
           </div>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-6">
           {renderContent()}
         </main>
       </div>
+
+      {showLogoutModal && (
+        <Logout onConfirm={handleLogoutConfirm} onCancel={handleLogoutCancel} />
+      )}
     </div>
   );
 }

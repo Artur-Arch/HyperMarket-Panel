@@ -1,126 +1,139 @@
-import React, { useState } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  Phone, 
-  Mail, 
+import React, { useState, useEffect } from 'react';
+import {
+  Search,
+  Filter,
+  Plus,
+  Phone,
   MapPin,
   Eye,
   Edit3,
   Building2,
   Users,
-  DollarSign,
   Package,
-  TrendingUp,
-  TrendingDown,
-  Clock,
-  CheckCircle,
-  AlertCircle
+  X,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Branches = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [branches, setBranches] = useState([]);
+  const [modalState, setModalState] = useState({ isOpen: false, type: null, branch: null });
+  const [newBranch, setNewBranch] = useState({ name: '', location: '', phone: '' });
+  const [editBranch, setEditBranch] = useState({ name: '', location: '', phone: '' });
+  const [error, setError] = useState(null);
 
-  const branches = [
-    {
-      id: 'B001',
-      name: 'Марказий Филиал',
-      address: 'Тошкент, Амир Темур кўчаси 15',
-      phone: '+998 71 123 45 67',
-      email: 'markaziy@dokon.uz',
-      manager: 'Акмал Тошматов',
-      employeeCount: 12,
-      monthlyRevenue: 85000000,
-      monthlyTarget: 80000000,
-      inventoryValue: 45000000,
-      status: 'active',
-      openingDate: '2020-03-15',
-      workingHours: '09:00 - 21:00',
-      area: 250
-    },
-    {
-      id: 'B002',
-      name: 'Чилонзор Филиали',
-      address: 'Тошкент, Чилонзор тумани, Бунёдкор кўчаси 28',
-      phone: '+998 71 234 56 78',
-      email: 'chilonzor@dokon.uz',
-      manager: 'Зарина Каримова',
-      employeeCount: 8,
-      monthlyRevenue: 62000000,
-      monthlyTarget: 65000000,
-      inventoryValue: 32000000,
-      status: 'active',
-      openingDate: '2021-06-20',
-      workingHours: '10:00 - 20:00',
-      area: 180
-    },
-    {
-      id: 'B003',
-      name: 'Юнусобод Филиали',
-      address: 'Тошкент, Юнусобод тумани, Абдулла Қодирий кўчаси 45',
-      phone: '+998 71 345 67 89',
-      email: 'yunusobod@dokon.uz',
-      manager: 'Жасур Эргашев',
-      employeeCount: 10,
-      monthlyRevenue: 73000000,
-      monthlyTarget: 70000000,
-      inventoryValue: 38000000,
-      status: 'active',
-      openingDate: '2021-09-10',
-      workingHours: '09:30 - 20:30',
-      area: 220
-    },
-    {
-      id: 'B004',
-      name: 'Сергели Филиали',
-      address: 'Тошкент, Сергели тумани, Янги Сергели кўчаси 12',
-      phone: '+998 71 456 78 90',
-      email: 'sergeli@dokon.uz',
-      manager: 'Мадина Султанова',
-      employeeCount: 6,
-      monthlyRevenue: 45000000,
-      monthlyTarget: 50000000,
-      inventoryValue: 25000000,
-      status: 'maintenance',
-      openingDate: '2022-02-14',
-      workingHours: '10:00 - 19:00',
-      area: 150
-    },
-    {
-      id: 'B005',
-      name: 'Олмазор Филиали',
-      address: 'Тошкент, Олмазор тумани, Фаробий кўчаси 33',
-      phone: '+998 71 567 89 01',
-      email: 'olmazor@dokon.uz',
-      manager: 'Равшан Назаров',
-      employeeCount: 9,
-      monthlyRevenue: 58000000,
-      monthlyTarget: 60000000,
-      inventoryValue: 30000000,
-      status: 'active',
-      openingDate: '2022-05-25',
-      workingHours: '09:00 - 20:00',
-      area: 200
-    },
-    {
-      id: 'B006',
-      name: 'Миробод Филиали',
-      address: 'Тошкент, Миробод тумани, Навоий кўчаси 67',
-      phone: '+998 71 678 90 12',
-      email: 'mirobod@dokon.uz',
-      manager: 'Гулнора Абдуллаева',
-      employeeCount: 7,
-      monthlyRevenue: 0,
-      monthlyTarget: 55000000,
-      inventoryValue: 28000000,
-      status: 'inactive',
-      openingDate: '2023-01-10',
-      workingHours: '10:00 - 19:00',
-      area: 170
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      navigate('/login');
+      throw new Error('No token found. Please login again.');
     }
-  ];
+
+    const headers = {
+      ...options.headers,
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    };
+
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
+      navigate('/login');
+      throw new Error('Unauthorized: Session expired. Please login again.');
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}`);
+    }
+
+    return response;
+  };
+
+  useEffect(() => {
+    fetchBranches();
+  }, []);
+
+  const fetchBranches = async () => {
+    try {
+      const response = await fetchWithAuth('https://suddocs.uz/branches');
+      const data = await response.json();
+      const enhancedBranches = data.map((branch) => ({
+        ...branch,
+        id: branch.id,
+        address: branch.location,
+        status: branch.products.length > 0 ? 'active' : 'unknown',
+        employeeCount: branch.users.length,
+        inventoryValue: branch.products.reduce(
+          (sum, product) => sum + product.price * product.quantity,
+          0
+        ),
+        monthlyRevenue: 0,
+        monthlyTarget: 10000000,
+        workingHours: '09:00 - 18:00',
+        area: 200,
+      }));
+      setBranches(enhancedBranches);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch branches');
+      console.error(err);
+    }
+  };
+
+  const handleAddBranch = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetchWithAuth('https://suddocs.uz/branches', {
+        method: 'POST',
+        body: JSON.stringify(newBranch),
+      });
+      if (response.ok) {
+        setModalState({ isOpen: false, type: null, branch: null });
+        setNewBranch({ name: '', location: '', phone: '' });
+        await fetchBranches();
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to add branch');
+      console.error(err);
+    }
+  };
+
+  const handleEditBranch = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await fetchWithAuth(
+        `https://suddocs.uz/branches/${modalState.branch.id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(editBranch),
+        }
+      );
+      if (response.ok) {
+        setModalState({ isOpen: false, type: null, branch: null });
+        setEditBranch({ name: '', location: '', phone: '' });
+        await fetchBranches();
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to update branch');
+      console.error(err);
+    }
+  };
+
+  const openModal = (type, branch = null) => {
+    setModalState({ isOpen: true, type, branch });
+    if (type === 'edit' && branch) {
+      setEditBranch({ name: branch.name, location: branch.location, phone: branch.phone });
+    }
+  };
+
+  const closeModal = () => {
+    setModalState({ isOpen: false, type: null, branch: null });
+    setError(null);
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -128,8 +141,6 @@ const Branches = () => {
         return 'bg-green-100 text-green-800';
       case 'inactive':
         return 'bg-red-100 text-red-800';
-      case 'maintenance':
-        return 'bg-yellow-100 text-yellow-800';
       default:
         return 'bg-gray-100 text-gray-800';
     }
@@ -141,67 +152,57 @@ const Branches = () => {
         return 'Фаол';
       case 'inactive':
         return 'Фаол эмас';
-      case 'maintenance':
-        return 'Таъмирлаш';
       default:
         return 'Номаълум';
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'active':
-        return <CheckCircle className="text-green-500" size={16} />;
-      case 'inactive':
-        return <AlertCircle className="text-red-500" size={16} />;
-      case 'maintenance':
-        return <Clock className="text-yellow-500" size={16} />;
-      default:
-        return <Building2 className="text-gray-500" size={16} />;
-    }
-  };
-
-  const getPerformanceColor = (revenue, target) => {
-    if (revenue >= target) return 'text-green-600';
-    if (revenue >= target * 0.8) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getPerformanceIcon = (revenue, target) => {
-    if (revenue >= target) return <TrendingUp className="text-green-500" size={16} />;
-    return <TrendingDown className="text-red-500" size={16} />;
-  };
-
-  const filteredBranches = branches.filter(branch => {
-    const matchesSearch = branch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         branch.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         branch.manager.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredBranches = branches.filter((branch) => {
+    const matchesSearch =
+      branch.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      branch.address.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = selectedStatus === 'all' || branch.status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
 
   const totalBranches = branches.length;
-  const activeBranches = branches.filter(b => b.status === 'active').length;
+  const activeBranches = branches.filter((b) => b.status === 'active').length;
   const totalEmployees = branches.reduce((sum, branch) => sum + branch.employeeCount, 0);
-  const totalRevenue = branches.reduce((sum, branch) => sum + branch.monthlyRevenue, 0);
-  const totalTarget = branches.reduce((sum, branch) => sum + branch.monthlyTarget, 0);
   const totalInventoryValue = branches.reduce((sum, branch) => sum + branch.inventoryValue, 0);
 
+  const formatCurrencyUzbek = (value) => {
+    if (value >= 1_000_000_000_000) {
+      return `${(value / 1_000_000_000_000).toFixed(1)} триллион сўм`;
+    } else if (value >= 1_000_000_000) {
+      return `${(value / 1_000_000_000).toFixed(1)} миллиард сўм`;
+    } else if (value >= 1_000_000) {
+      return `${(value / 1_000_000).toFixed(1)} миллион сўм`;
+    } else if (value >= 1_000) {
+      return `${(value / 1_000).toFixed(1)} минг сўм`;
+    }
+    return `${value.toFixed(0)} сўм`;
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-0">
+      {error && <div className="bg-red-100 text-red-800 p-4 rounded-lg">{error}</div>}
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Филиаллар Бошқаруви</h1>
           <p className="text-gray-600 mt-1">Барча филиаллар маълумотлари ва статистикаси</p>
         </div>
-        <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+        <button
+          onClick={() => openModal('add')}
+          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+        >
           <Plus size={20} className="mr-2" />
           Янги Филиал
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-center">
           <div className="flex items-center">
             <div className="p-3 bg-blue-50 rounded-lg mr-4">
               <Building2 className="text-blue-600" size={24} />
@@ -215,7 +216,7 @@ const Branches = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center">
             <div className="p-3 bg-green-50 rounded-lg mr-4">
-              <CheckCircle className="text-green-600" size={24} />
+              <Building2 className="text-green-600" size={24} />
             </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Фаол Филиаллар</p>
@@ -236,53 +237,15 @@ const Branches = () => {
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <div className="flex items-center">
-            <div className="p-3 bg-green-50 rounded-lg mr-4">
-              <DollarSign className="text-green-600" size={24} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Умумий Даромад</p>
-              <p className="text-xl font-bold text-gray-900">{(totalRevenue / 1000000).toFixed(1)}M</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-orange-50 rounded-lg mr-4">
-              <TrendingUp className="text-orange-600" size={24} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Мақсад</p>
-              <p className="text-xl font-bold text-gray-900">{(totalTarget / 1000000).toFixed(1)}M</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center">
             <div className="p-3 bg-indigo-50 rounded-lg mr-4">
               <Package className="text-indigo-600" size={24} />
             </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Инвентар</p>
-              <p className="text-xl font-bold text-gray-900">{(totalInventoryValue / 1000000).toFixed(1)}M</p>
+              <p className="text-xl font-bold text-gray-900">
+                {formatCurrencyUzbek(totalInventoryValue)}
+              </p>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Филиаллар Самарадорлиги</h3>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-600">Умумий Мақсадга Эришиш</span>
-            <span className={`text-sm font-semibold ${getPerformanceColor(totalRevenue, totalTarget)}`}>
-              {((totalRevenue / totalTarget) * 100).toFixed(1)}%
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
-            <div 
-              className={`h-3 rounded-full ${totalRevenue >= totalTarget ? 'bg-green-600' : 'bg-yellow-600'}`}
-              style={{ width: `${Math.min((totalRevenue / totalTarget) * 100, 100)}%` }}
-            ></div>
           </div>
         </div>
       </div>
@@ -290,10 +253,13 @@ const Branches = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <input
               type="text"
-              placeholder="Филиал номи, манзил ёки менежери..."
+              placeholder="Филиал номи, манзил..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -308,7 +274,6 @@ const Branches = () => {
             >
               <option value="all">Барча ҳолатлар</option>
               <option value="active">Фаол</option>
-              <option value="maintenance">Таъмирлаш</option>
               <option value="inactive">Фаол эмас</option>
             </select>
           </div>
@@ -327,19 +292,13 @@ const Branches = () => {
                   Манзил
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Менежери
+                  Телефон
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Ходимлар
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ойлик Даромад
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Мақсад
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Самарадорлик
+                  Инвентар
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Ҳолат
@@ -351,7 +310,10 @@ const Branches = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredBranches.map((branch) => (
-                <tr key={branch.id} className="hover:bg-gray-50 transition-colors duration-150">
+                <tr
+                  key={branch.id}
+                  className="hover:bg-gray-50 transition-colors duration-150"
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold mr-4">
@@ -368,57 +330,50 @@ const Branches = () => {
                       <MapPin size={14} className="mr-2 mt-1 text-gray-400" />
                       <div>
                         <div className="text-sm text-gray-900">{branch.address}</div>
-                        <div className="text-xs text-gray-500">{branch.area}м² • {branch.workingHours}</div>
+                        <div className="text-xs text-gray-500">{branch.workingHours}</div>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium text-gray-900">{branch.manager}</div>
-                      <div className="flex items-center text-sm text-gray-600">
-                        <Phone size={12} className="mr-1" />
-                        {branch.phone}
-                      </div>
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Phone size={12} className="mr-1" />
+                      {branch.phone}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <Users size={14} className="mr-2 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-900">{branch.employeeCount}</span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {branch.employeeCount}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-semibold text-gray-900">
-                      {branch.monthlyRevenue.toLocaleString()} сўм
+                      {formatCurrencyUzbek(branch.inventoryValue)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-600">
-                      {branch.monthlyTarget.toLocaleString()} сўм
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      {getPerformanceIcon(branch.monthlyRevenue, branch.monthlyTarget)}
-                      <span className={`ml-2 text-sm font-medium ${getPerformanceColor(branch.monthlyRevenue, branch.monthlyTarget)}`}>
-                        {branch.monthlyTarget > 0 ? ((branch.monthlyRevenue / branch.monthlyTarget) * 100).toFixed(1) : 0}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      {getStatusIcon(branch.status)}
-                      <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(branch.status)}`}>
-                        {getStatusText(branch.status)}
-                      </span>
-                    </div>
+                    <span
+                      className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(
+                        branch.status
+                      )}`}
+                    >
+                      {getStatusText(branch.status)}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
-                      <button className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50">
+                      <button
+                        onClick={() => openModal('view', branch)}
+                        className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                      >
                         <Eye size={16} />
                       </button>
-                      <button className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50">
+                      <button
+                        onClick={() => openModal('edit', branch)}
+                        className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50"
+                      >
                         <Edit3 size={16} />
                       </button>
                     </div>
@@ -429,6 +384,168 @@ const Branches = () => {
           </table>
         </div>
       </div>
+
+      {modalState.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md ">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                {modalState.type === 'add'
+                  ? 'Янги Филиал Қўшиш'
+                  : modalState.type === 'view'
+                  ? 'Филиал Маълумотлари'
+                  : 'Филиални Таҳрирлаш'}
+              </h2>
+              <button onClick={closeModal} className="text-gray-500 hover:text-gray-700">
+                <X size={24} />
+              </button>
+            </div>
+
+            {modalState.type === 'view' && modalState.branch && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Филиал Номи</label>
+                  <p className="mt-1 text-sm text-gray-900">{modalState.branch.name}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Манзил</label>
+                  <p className="mt-1 text-sm text-gray-900">{modalState.branch.location}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Телефон</label>
+                  <p className="mt-1 text-sm text-gray-900">{modalState.branch.phone}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Ҳолат</label>
+                  <p className="mt-1 text-sm text-gray-900">
+                    {getStatusText(modalState.branch.status)}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Ходимлар</label>
+                  <p className="mt-1 text-sm text-gray-900">{modalState.branch.employeeCount}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Умумий Инвентар Нархи
+                  </label>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">
+                    {formatCurrencyUzbek(modalState.branch.inventoryValue)}
+                  </p>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    Ёпиш
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {modalState.type === 'add' && (
+              <form onSubmit={handleAddBranch} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Филиал Номи</label>
+                  <input
+                    type="text"
+                    value={newBranch.name}
+                    onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Манзил</label>
+                  <input
+                    type="text"
+                    value={newBranch.location}
+                    onChange={(e) => setNewBranch({ ...newBranch, location: e.target.value })}
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Телефон</label>
+                  <input
+                    type="tel"
+                    value={newBranch.phone}
+                    onChange={(e) => setNewBranch({ ...newBranch, phone: e.target.value })}
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    Бекор қилиш
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Қўшиш
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {modalState.type === 'edit' && (
+              <form onSubmit={handleEditBranch} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Филиал Номи</label>
+                  <input
+                    type="text"
+                    value={editBranch.name}
+                    onChange={(e) => setEditBranch({ ...editBranch, name: e.target.value })}
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Манзил</label>
+                  <input
+                    type="text"
+                    value={editBranch.location}
+                    onChange={(e) => setEditBranch({ ...editBranch, location: e.target.value })}
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Телефон</label>
+                  <input
+                    type="tel"
+                    value={editBranch.phone}
+                    onChange={(e) => setEditBranch({ ...editBranch, phone: e.target.value })}
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    Бекор қилиш
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Сақлаш
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

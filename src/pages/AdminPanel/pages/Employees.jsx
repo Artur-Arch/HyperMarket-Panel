@@ -1,140 +1,402 @@
-import React, { useState } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  Phone, 
-  Mail, 
+import React, { useState, useEffect } from "react";
+import {
+  Search,
+  Filter,
+  Plus,
+  Phone,
+  Mail,
   Calendar,
   Eye,
   Edit3,
   UserCheck,
   UserX,
   Shield,
-  User
-} from 'lucide-react';
+  User,
+  X,
+  Trash2,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-const Employees = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
+const UserRole = {
+  ADMIN: "ADMIN",
+  MANAGER: "MANAGER",
+  CASHIER: "CASHIER",
+  WAREHOUSE: "WAREHOUSE",
+  AUDITOR: "AUDITOR",
+};
 
-  const employees = [
-    {
-      id: 'E001',
-      name: 'Акмал Тошматов',
-      email: 'akmal.toshmatov@dokon.uz',
-      phone: '+998 90 123 45 67',
-      position: 'Дўкон Мудири',
-      department: 'Бошқарув',
-      salary: 8000000,
-      hireDate: '2022-03-15',
-      status: 'active',
-      role: 'admin'
-    },
-    {
-      id: 'E002',
-      name: 'Зарина Каримова',
-      email: 'zarina.karimova@dokon.uz',
-      phone: '+998 91 234 56 78',
-      position: 'Сотувчи',
-      department: 'Савдо',
-      salary: 4500000,
-      hireDate: '2023-01-20',
-      status: 'active',
-      role: 'sales'
-    },
-    {
-      id: 'E003',
-      name: 'Жасур Эргашев',
-      email: 'jasur.ergashev@dokon.uz',
-      phone: '+998 93 345 67 89',
-      position: 'Кассир',
-      department: 'Савдо',
-      salary: 4000000,
-      hireDate: '2023-05-10',
-      status: 'active',
-      role: 'cashier'
-    },
-    {
-      id: 'E004',
-      name: 'Мадина Султанова',
-      email: 'madina.sultanova@dokon.uz',
-      phone: '+998 94 456 78 90',
-      position: 'Омборчи',
-      department: 'Омбор',
-      salary: 3800000,
-      hireDate: '2022-11-05',
-      status: 'on_leave',
-      role: 'manager'
-    },
-    {
-      id: 'E005',
-      name: 'Равшан Назаров',
-      email: 'ravshan.nazarov@dokon.uz',
-      phone: '+998 95 567 89 01',
-      position: 'Ёрдамчи Сотувчи',
-      department: 'Савдо',
-      salary: 4500000,
-      hireDate: '2023-08-05',
-      status: 'active',
-      role: 'sales'
-    },
-    {
-      id: 'E006',
-      name: 'Гулнора Абдуллаева',
-      email: 'gulnora.abdullayeva@dokon.uz',
-      phone: '+998 97 678 90 12',
-      position: 'Ҳисобчи',
-      department: 'Молия',
-      salary: 5500000,
-      hireDate: '2022-07-10',
-      status: 'active',
-      role: 'contributor'
+const Employees = ({ selectedBranchId: propSelectedBranchId }) => {
+  const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
+  const [employees, setEmployees] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [modalType, setModalType] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    propSelectedBranchId || localStorage.getItem("selectedBranchId") || ""
+  );
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    role: UserRole.ADMIN,
+    branchId:
+      propSelectedBranchId || localStorage.getItem("selectedBranchId") || "",
+    password: "",
+  });
+  const [formErrors, setFormErrors] = useState({});
+
+  const departments = ["Хамма бўлимлар", "Бошқарув", "Савдо", "Омбор", "Молия"];
+
+  // Phone number formatting function
+  const formatPhoneNumber = (value) => {
+    let digits = value.replace(/\D/g, "");
+    if (digits.startsWith("998")) {
+      digits = digits.slice(3);
     }
-  ];
+    digits = digits.slice(0, 9);
+    const match = digits.match(/(\d{0,2})(\d{0,3})(\d{0,2})(\d{0,2})/);
+    const parts = match ? [match[1], match[2], match[3], match[4]].filter(Boolean) : [];
+    return "+998" + (parts.length > 0 ? " " + parts.join(" ") : "");
+  };
 
-  const departments = [
-    'all',
-    'Бошқарув',
-    'Савдо',
-    'Омбор',
-    'Молия'
-  ];
+  const fetchWithAuth = async (url, options = {}) => {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      throw new Error("No token found. Please login again.");
+    }
+    const headers = {
+      ...options.headers,
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("user");
+      localStorage.removeItem("userId");
+      navigate("/login");
+      throw new Error("Unauthorized: Session expired. Please login again.");
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ${url}`);
+    }
+    return response;
+  };
+
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "selectedBranchId") {
+        setSelectedBranchId(e.newValue || "");
+        setFormData((prev) => ({ ...prev, branchId: e.newValue || "" }));
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (propSelectedBranchId !== undefined) {
+      setSelectedBranchId(propSelectedBranchId);
+      setFormData((prev) => ({ ...prev, branchId: propSelectedBranchId }));
+    }
+  }, [propSelectedBranchId]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [usersResponse, branchesResponse] = await Promise.all([
+          fetchWithAuth("https://suddocs.uz/users"),
+          fetchWithAuth("https://suddocs.uz/branches"),
+        ]);
+        const [usersData, branchesData] = await Promise.all([
+          usersResponse.json(),
+          branchesResponse.json(),
+        ]);
+        const mappedEmployees = usersData.map((user) => ({
+          id: user.id.toString(),
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          position: getPositionFromRole(user.role),
+          department: getDepartmentFromRole(user.role),
+          salary: 4000000,
+          hireDate: new Date(user.createdAt).toISOString().split("T")[0],
+          status: "active",
+          role: user.role,
+          branchId: user.branchId,
+        }));
+        setEmployees(mappedEmployees);
+        setBranches(branchesData);
+        if (
+          selectedBranchId &&
+          !branchesData.some((b) => b.id.toString() === selectedBranchId)
+        ) {
+          setSelectedBranchId("");
+          localStorage.setItem("selectedBranchId", "");
+          setFormData((prev) => ({ ...prev, branchId: "" }));
+        }
+        setLoading(false);
+      } catch (err) {
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [selectedBranchId]);
+
+  const getPositionFromRole = (role) => {
+    switch (role) {
+      case UserRole.ADMIN:
+        return "Администратор";
+      case UserRole.MANAGER:
+        return "Менежер";
+      case UserRole.CASHIER:
+        return "Кассир";
+      case UserRole.WAREHOUSE:
+        return "Омборчи";
+      case UserRole.AUDITOR:
+        return "Доставкачи";
+      default:
+        return "Ходим";
+    }
+  };
+
+  const getDepartmentFromRole = (role) => {
+    switch (role) {
+      case UserRole.ADMIN:
+        return "Бошқарув";
+      case UserRole.MANAGER:
+        return "Бошқарув";
+      case UserRole.CASHIER:
+        return "Савдо";
+      case UserRole.WAREHOUSE:
+        return "Омбор";
+      case UserRole.AUDITOR:
+        return "Доставка";
+      default:
+        return "Бошқарув";
+    }
+  };
+
+  const getBranchName = (branchId) => {
+    const branch = branches.find((b) => b.id === branchId);
+    return branch ? branch.name : "Номаълум";
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    if (name === "phone") {
+      const formattedPhone = formatPhoneNumber(value);
+      setFormData((prev) => ({
+        ...prev,
+        [name]: formattedPhone,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: name === "branchId" ? parseInt(value) || "" : value,
+      }));
+    }
+    setFormErrors((prev) => ({ ...prev, [name]: "" }));
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.name.trim()) errors.name = "Ном киритиш мажбурий";
+    if (!formData.email.trim() || !/\S+@\S+\.\S+/.test(formData.email))
+      errors.email = "Тўғри email киритинг";
+    if (
+      !formData.phone.trim() ||
+      !/^\+998\s?\d{2}\s?\d{3}\s?\d{2}\s?\d{2}$/.test(formData.phone)
+    )
+      errors.phone = "Тўғри телефон рақами киритинг (+998 XX XXX XX XX)";
+    if (!Object.values(UserRole).includes(formData.role))
+      errors.role = "Тўғри рол танланг";
+    if (!formData.branchId || !branches.some((b) => b.id === formData.branchId))
+      errors.branchId = "Тўғри филиал танланг";
+    if (modalType === "add" && !formData.password.trim())
+      errors.password = "Парол киритиш мажбурий";
+    if (formData.password.trim() && formData.password.length < 6)
+      errors.password = "Парол камида 6 белгидан иборат бўлиши керак";
+    return errors;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    const employeeData = {
+      name: formData.name,
+      email: formData.email,
+      phone: formData.phone.replace(/\s/g, ""),
+      role: formData.role,
+      branchId: formData.branchId,
+    };
+    if (
+      modalType === "add" ||
+      (modalType === "edit" && formData.password.trim())
+    ) {
+      employeeData.password = formData.password;
+    }
+    try {
+      let response;
+      if (modalType === "add") {
+        response = await fetchWithAuth("https://suddocs.uz/users", {
+          method: "POST",
+          body: JSON.stringify(employeeData),
+        });
+      } else if (modalType === "edit") {
+        response = await fetchWithAuth(
+          `https://suddocs.uz/users/${selectedEmployee.id}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(employeeData),
+          }
+        );
+      }
+      const updatedEmployee = await response.json();
+      if (modalType === "add") {
+        setEmployees((prev) => [
+          ...prev,
+          {
+            id: updatedEmployee.id.toString(),
+            name: updatedEmployee.name,
+            email: updatedEmployee.email,
+            phone: updatedEmployee.phone,
+            position: getPositionFromRole(updatedEmployee.role),
+            department: getDepartmentFromRole(updatedEmployee.role),
+            salary: 4000000,
+            hireDate: new Date(updatedEmployee.createdAt)
+              .toISOString()
+              .split("T")[0],
+            status: "active",
+            role: updatedEmployee.role,
+            branchId: updatedEmployee.branchId,
+          },
+        ]);
+      } else if (modalType === "edit") {
+        setEmployees((prev) =>
+          prev.map((emp) =>
+            emp.id === selectedEmployee.id
+              ? {
+                  ...emp,
+                  name: updatedEmployee.name,
+                  email: updatedEmployee.email,
+                  phone: updatedEmployee.phone,
+                  role: updatedEmployee.role,
+                  branchId: updatedEmployee.branchId,
+                  position: getPositionFromRole(updatedEmployee.role),
+                  department: getDepartmentFromRole(updatedEmployee.role),
+                }
+              : emp
+          )
+        );
+      }
+      closeModal();
+      alert(
+        `Ходим ${
+          modalType === "add"
+            ? "муваффақиятли қўшилди"
+            : "муваффақиятли янгиланди"
+        }!`
+      );
+    } catch (err) {
+      alert(`Хато: ${err.message}`);
+    }
+  };
+
+  const handleDelete = async (employee) => {
+    if (!window.confirm(`Ходим ${employee.name} ни ўчиришни тасдиқланг`)) {
+      return;
+    }
+    try {
+      await fetchWithAuth(`https://suddocs.uz/users/${employee.id}`, {
+        method: "DELETE",
+      });
+      setEmployees((prev) => prev.filter((emp) => emp.id !== employee.id));
+      alert("Ходим муваффақиятли ўчирилди!");
+    } catch (err) {
+      alert(`Хато: ${err.message}`);
+    }
+  };
+
+  const openViewModal = (employee) => {
+    setSelectedEmployee(employee);
+    setModalType("view");
+  };
+
+  const openEditModal = (employee) => {
+    setSelectedEmployee(employee);
+    setFormData({
+      name: employee.name,
+      email: employee.email,
+      phone: employee.phone,
+      role: employee.role,
+      branchId: employee.branchId,
+      password: "",
+    });
+    setModalType("edit");
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setSelectedEmployee(null);
+    setFormData({
+      name: "",
+      email: "",
+      phone: "",
+      role: UserRole.ADMIN,
+      branchId: selectedBranchId || branches[0]?.id || "",
+      password: "",
+    });
+    setFormErrors({});
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
-      case 'active':
-        return 'badge badge-success';
-      case 'inactive':
-        return 'badge badge-error';
-      case 'on_leave':
-        return 'badge badge-warning';
+      case "active":
+        return "badge badge-success";
+      case "inactive":
+        return "badge badge-error";
+      case "on_leave":
+        return "badge badge-warning";
       default:
-        return 'badge badge-info';
+        return "badge badge-info";
     }
   };
 
   const getStatusText = (status) => {
     switch (status) {
-      case 'active':
-        return 'Фаол';
-      case 'inactive':
-        return 'Ишламайди';
-      case 'on_leave':
-        return 'Таътилда';
+      case "active":
+        return "Фаол";
+      case "inactive":
+        return "Ишламайди";
+      case "on_leave":
+        return "Таътилда";
       default:
-        return 'Номаълум';
+        return "Номаълум";
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'active':
+      case "active":
         return <UserCheck className="text-blue-600" size={20} />;
-      case 'inactive':
+      case "inactive":
         return null;
-      case 'on_leave':
+      case "on_leave":
         return <Calendar className="text-yellow-600" size={20} />;
       default:
         return <User className="text-gray-500" size={20} />;
@@ -143,57 +405,324 @@ const Employees = () => {
 
   const getRoleIcon = (role) => {
     switch (role) {
-      case 'admin':
-        return <Shield className="text-red-500" size={16} />;
-      case 'manager':
-        return <Shield className="text-blue-500" size={16} />;
+      case UserRole.ADMIN:
+        return <Shield className="text-red-600" size={16} />;
+      case UserRole.MANAGER:
+        return <Shield className="text-blue-600" size={16} />;
       default:
-        return <User className="text-gray-500" size={16} />;
+        return <UserCheck className="text-gray-500" size={16} />;
     }
   };
 
   const getRoleText = (role) => {
     switch (role) {
-      case 'admin':
-        return 'Администратор';
-      case 'manager':
-        return 'Менежер';
-      case 'cashier':
-        return 'Кассир';
-      case 'sales':
-        return 'Сотувчи';
+      case UserRole.ADMIN:
+        return "Администратор";
+      case UserRole.MANAGER:
+        return "Менежер";
+      case UserRole.CASHIER:
+        return "Кассир";
+      case UserRole.WAREHOUSE:
+        return "Омборчи";
+      case UserRole.AUDITOR:
+        return "Доставкачи";
       default:
-        return 'Ходим';
+        return "Ходим";
     }
   };
 
-  const filteredEmployees = employees.filter(employee => {
-    const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         employee.position.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartment = selectedDepartment === 'all' || employee.department === selectedDepartment;
-    const matchesStatus = selectedStatus === 'all' || employee.status === selectedStatus;
-    return matchesSearch && matchesDepartment && matchesStatus;
+  const filteredEmployees = employees.filter((employee) => {
+    const matchesSearch =
+      employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.position.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDepartment =
+      selectedDepartment === "all" ||
+      employee.department === selectedDepartment;
+    const matchesStatus =
+      selectedStatus === "all" || employee.status === selectedStatus;
+    const matchesBranch =
+      !selectedBranchId || employee.branchId.toString() === selectedBranchId;
+    return matchesSearch && matchesDepartment && matchesStatus && matchesBranch;
   });
 
-  const totalEmployees = employees.length;
-  const activeEmployees = employees.filter(e => e.status === 'active').length;
-  const onLeaveEmployees = employees.filter(e => e.status === 'on_leave').length;
-  const totalSalary = employees.filter(e => e.status === 'active').reduce((sum, emp) => sum + emp.salary, 0);
+  const totalEmployees = filteredEmployees.length;
+  const activeEmployees = filteredEmployees.filter(
+    (e) => e.status === "active"
+  ).length;
+
+  if (loading) {
+    return <div className="text-center py-4">Юкланмоқда...</div>;
+  }
+
+  if (error) {
+    return <div className="text-center py-4 text-red-600">Хато: {error}</div>;
+  }
 
   return (
     <div className="space-y-6">
+      {modalType && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-md p-6 relative">
+            <button
+              onClick={closeModal}
+              className="absolute top-3 right-3 text-gray-600 hover:text-gray-800"
+            >
+              <X size={20} />
+            </button>
+            <h2
+              className="text-xl font-semibold mb-4"
+              style={{ color: "#1178f8" }}
+            >
+              {modalType === "add"
+                ? "Янги Ходим Қўшиш"
+                : modalType === "view"
+                ? "Ходим Маълумотлари"
+                : "Ходимни Янгилш"}
+            </h2>
+            {modalType === "view" ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Исм Фамилия
+                  </p>
+                  <p className="text-gray-900">{selectedEmployee.name}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Email</p>
+                  <p className="text-gray-900">{selectedEmployee.email}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Телефон</p>
+                  <p className="text-gray-900">{selectedEmployee.phone}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Рол</p>
+                  <p className="text-gray-900">
+                    {getRoleText(selectedEmployee.role)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Филиал</p>
+                  <p className="text-gray-900">
+                    {getBranchName(selectedEmployee.branchId)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Лавозим</p>
+                  <p className="text-gray-900">{selectedEmployee.position}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Бўлим</p>
+                  <p className="text-gray-900">{selectedEmployee.department}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Иш Бошлаган Сана
+                  </p>
+                  <p className="text-gray-900">{selectedEmployee.hireDate}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Ҳолат</p>
+                  <p className="text-gray-900">
+                    {getStatusText(selectedEmployee.status)}
+                  </p>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    Ёпиш
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Исм Фамилия
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Исм Фамилияси"
+                  />
+                  {formErrors.name && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {formErrors.name}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Email"
+                  />
+                  {formErrors.email && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {formErrors.email}
+                    </p>
+                  )}
+                </div>
+                <div className="relative">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Телефон
+                  </label>
+                  <div className="mt-1 relative">
+                    <Phone
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                      size={20}
+                    />
+                    <input
+                      type="text"
+                      name="phone"
+                      max={12}
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="+998 90 123 45 67"
+                    />
+                  </div>
+                  {formErrors.phone && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {formErrors.phone}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Парол{" "}
+                    {modalType === "edit" && "(янги парол киритиш ихтиёрий)"}
+                  </label>
+                  <input
+                    type="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder={
+                      modalType === "add"
+                        ? "Парол"
+                        : "Янги парол (агар керак бўлса)"
+                    }
+                  />
+                  {formErrors.password && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {formErrors.password}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Рол
+                  </label>
+                  <select
+                    name="role"
+                    value={formData.role}
+                    onChange={handleInputChange}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {Object.values(UserRole).map((role) => (
+                      <option key={role} value={role}>
+                        {getRoleText(role)}
+                      </option>
+                    ))}
+                  </select>
+                  {formErrors.role && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {formErrors.role}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Филиал
+                  </label>
+                  <select
+                    name="branchId"
+                    value={formData.branchId}
+                    onChange={handleInputChange}
+                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={selectedBranchId !== ""}
+                  >
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </option>
+                    ))}
+                  </select>
+                  {formErrors.branchId && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {formErrors.branchId}
+                    </p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                  >
+                    Бекор қилиш
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-white rounded-lg"
+                    style={{
+                      backgroundColor: "#1178f8",
+                      ":hover": { backgroundColor: "#0e6be6" },
+                    }}
+                  >
+                    {modalType === "add" ? "Қўшиш" : "Янгилш"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Ходимлар Бошқаруви</h1>
-          <p className="text-gray-500 mt-1">Ходимлар маълумотлари ва бошқаруви</p>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Ходимлар Бошқаруви
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Ходимлар маълумотлари ва бошқаруви
+          </p>
         </div>
-        <button className="flex items-center px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+        <button
+          onClick={() => {
+            setModalType("add");
+            setFormData({
+              name: "",
+              email: "",
+              phone: "",
+              role: UserRole.ADMIN,
+              branchId: selectedBranchId || branches[0]?.id || "",
+              password: "",
+            });
+          }}
+          className="flex items-center px-6 py-2 text-white rounded-lg"
+          style={{
+            backgroundColor: "#1178f8",
+            ":hover": { backgroundColor: "#0e6be6" },
+          }}
+        >
           <Plus size={20} className="mr-2" />
           Янги Ходим
         </button>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
           <div className="flex items-center gap-3">
@@ -202,7 +731,9 @@ const Employees = () => {
             </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Жами Ходимлар</p>
-              <p className="text-2xl font-semibold text-gray-900">{totalEmployees}</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {totalEmployees}
+              </p>
             </div>
           </div>
         </div>
@@ -213,38 +744,20 @@ const Employees = () => {
             </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Фаол Ходимлар</p>
-              <p className="text-2xl font-semibold text-gray-900">{activeEmployees}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-yellow-50 rounded-lg">
-              <Calendar className="text-yellow-600" size={20} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Таътилда</p>
-              <p className="text-2xl font-semibold text-gray-900">{onLeaveEmployees}</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-purple-50 rounded-lg">
-              <Shield className="text-purple-600" size={20} />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-600">Умумий Ойлик</p>
-              <p className="text-xl font-semibold text-gray-900">{(totalSalary / 1000000).toFixed(1)}M</p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {activeEmployees}
+              </p>
             </div>
           </div>
         </div>
       </div>
-
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search
+              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+              size={20}
+            />
             <input
               type="text"
               placeholder="Ходим номи, email ёки лавозим..."
@@ -261,27 +774,16 @@ const Employees = () => {
                 onChange={(e) => setSelectedDepartment(e.target.value)}
                 className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
-                {departments.map(dept => (
+                {departments.map((dept) => (
                   <option key={dept} value={dept}>
-                    {dept === 'all' ? 'Барча бўлимлар' : dept}
+                    {dept === "all" ? "Барча бўлимлар" : dept}
                   </option>
                 ))}
               </select>
             </div>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">Барча ҳолатлар</option>
-              <option value="active">Фаол</option>
-              <option value="on_leave">Таътилда</option>
-              <option value="inactive">Ишламайди</option>
-            </select>
           </div>
         </div>
       </div>
-
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -297,9 +799,6 @@ const Employees = () => {
                   Алоқа
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ойлик Маош
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Иш Бошлаган Сана
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -313,29 +812,43 @@ const Employees = () => {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white">
               {filteredEmployees.map((employee) => (
-                <tr key={employee.id} className="hover:bg-gray-50 transition-colors duration-150">
+                <tr
+                  key={employee.id}
+                  className="hover:bg-gray-50 transition-colors duration-200"
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold mr-4">
-                        {employee.name.split(' ').map(n => n[0]).join('')}
+                        {employee.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-gray-900">{employee.name}</div>
-                        <div className="text-sm text-gray-500">ID: {employee.id}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {employee.name}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          ID: {employee.id}
+                        </div>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{employee.position}</div>
-                      <div className="text-sm text-gray-500">{employee.department}</div>
+                      <div className="text-sm font-medium">
+                        {employee.position}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {employee.department}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="space-y-1">
-                      <div className="flex items-center text-sm text-gray-600">
+                      <div className="flex items center text-sm text-gray-600">
                         <Mail size={14} className="mr-2" />
                         <span className="truncate">{employee.email}</span>
                       </div>
@@ -346,13 +859,10 @@ const Employees = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-semibold text-gray-900">
-                      {employee.salary.toLocaleString()} сўм
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-gray-600">
-                      <Calendar size={14} className="mr-2" />
+                      <Calendar
+
+ size={14} className="mr-2" />
                       {employee.hireDate}
                     </div>
                   </td>
@@ -367,18 +877,34 @@ const Employees = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       {getStatusIcon(employee.status)}
-                      <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(employee.status)}`}>
+                      <span
+                        className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(
+                          employee.status
+                        )}`}
+                      >
                         {getStatusText(employee.status)}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex space-x-2">
-                      <button className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50">
+                      <button
+                        onClick={() => openViewModal(employee)}
+                        className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                      >
                         <Eye size={16} />
                       </button>
-                      <button className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50">
+                      <button
+                        onClick={() => openEditModal(employee)}
+                        className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50"
+                      >
                         <Edit3 size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(employee)}
+                        className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>

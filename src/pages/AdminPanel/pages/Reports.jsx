@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { 
-  Calendar, 
-  Download, 
-  TrendingUp, 
+import React, { useState, useEffect } from "react";
+import {
+  Calendar,
+  Download,
+  TrendingUp,
   TrendingDown,
   DollarSign,
   Package,
@@ -11,64 +11,204 @@ import {
   FileText,
   BarChart3,
   PieChart,
-  Activity
-} from 'lucide-react';
+  ShoppingBag,
+} from "lucide-react";
 
 const Reports = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState('month');
-  const [selectedReport, setSelectedReport] = useState('sales');
+  const [selectedPeriod, setSelectedPeriod] = useState("month");
+  const month = [
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Майь",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+  ];
 
-  const salesData = {
-    totalRevenue: 145280000,
-    totalSales: 342,
-    averageOrder: 425000,
-    growth: 12.5
-  };
+  const currentMonthName = month[new Date().getMonth()];
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthName);
+  const [selectedReport, setSelectedReport] = useState("sales");
+  const [soldProducts, setSoldProducts] = useState([]);
+  const [monthlyStats, setMonthlyStats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [allProducts, setAllProducts] = useState([]);
+  const [showFullInventoryValue, setShowFullInventoryValue] = useState(false);
+  const [categories, setCategories] = useState([]);
+
+  const months = [
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+  ];
+
+  // Определение reportTypes
+  const reportTypes = [
+    { id: "sales", name: "Сотувлар Ҳисоботи", icon: DollarSign },
+    { id: "inventory", name: "Инвентар Ҳисоботи", icon: Package },
+    { id: "customers", name: "Ходимлар Ҳисоботи", icon: Users },
+    { id: "financial", name: "Филиаллар Ҳисоботи", icon: BarChart3 },
+  ];
+
+  // Вычисление totalRevenue как суммы (price × quantity) всех проданных товаров
+  const totalRevenue = soldProducts.reduce((acc, item) => {
+    const price = Number(item.marketPrice) || 0;
+    const qty = Number(item.quantity) || 0;
+    return acc + price * qty; // Учитываем price × quantity
+  }, 0);
+
+  // Фильтрация продуктов по выбранному месяцу для monthlyStats и topProducts
+  const filteredProducts = soldProducts.filter((item) => {
+    if (!item.soldDate) return false;
+    const saleMonth = new Date(item.soldDate).toLocaleString("uz-UZ", {
+      month: "long",
+    });
+    return saleMonth.toLowerCase() === selectedMonth.toLowerCase();
+  });
+
+  const totalSales = filteredProducts.reduce(
+    (acc, item) => acc + Number(item.quantity || 0),
+    0
+  );
+
+  const averageOrder =
+    totalSales > 0 ? Math.round(totalRevenue / totalSales) : 0;
+
+  // Формирование topProducts для выбранного месяца
+  const topProducts = [...filteredProducts]
+    .sort((a, b) => (b.quantity || 0) - (a.quantity || 0))
+    .slice(0, 5)
+    .map((item) => ({
+      name: item.name,
+      sales: item.quantity,
+      revenue: (item.price || 0) * (item.quantity || 0),
+    }));
 
   const inventoryData = {
-    totalProducts: 1245,
-    lowStockItems: 23,
-    outOfStockItems: 8,
-    totalValue: 89500000
+    totalProducts: allProducts.length,
+    lowStockItems: allProducts.filter((p) => p.quantity > 0 && p.quantity < 5)
+      .length,
+    outOfStockItems: allProducts.filter((p) => p.quantity === 0).length,
+    totalValue: allProducts.reduce(
+      (acc, p) => acc + (Number(p.marketPrice) || 0) * Number(p.quantity || 0),
+      0
+    ),
   };
 
   const customerData = {
     totalCustomers: 892,
     newCustomers: 45,
     returningCustomers: 567,
-    customerGrowth: 8.1
+    customerGrowth: 8.1,
   };
 
-  const monthlyStats = [
-    { month: 'Январ', sales: 28000000, orders: 87 },
-    { month: 'Феврал', sales: 32000000, orders: 94 },
-    { month: 'Март', sales: 29000000, orders: 82 },
-    { month: 'Апрел', sales: 35000000, orders: 98 },
-    { month: 'Май', sales: 31000000, orders: 89 },
-    { month: 'Июн', sales: 38000000, orders: 102 }
-  ];
+  useEffect(() => {
+    const fetchSoldProducts = async () => {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        setError("Токен доступа отсутствует");
+        setLoading(false);
+        return;
+      }
 
-  const topProducts = [
-    { name: 'iPhone 14 Pro', sales: 45, revenue: 67500000 },
-    { name: 'Samsung Galaxy S23', sales: 38, revenue: 47500000 },
-    { name: 'MacBook Air M2', sales: 22, revenue: 55000000 },
-    { name: 'AirPods Pro 2', sales: 67, revenue: 23450000 },
-    { name: 'Dell XPS 13', sales: 18, revenue: 32400000 }
-  ];
+      try {
+        const response = await fetch("https://suddocs.uz/products", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
 
-  const reportTypes = [
-    { id: 'sales', name: 'Сотувлар Ҳисоботи', icon: DollarSign },
-    { id: 'inventory', name: 'Инвентар Ҳисоботи', icon: Package },
-    { id: 'customers', name: 'Мижозлар Ҳисоботи', icon: Users },
-    { id: 'financial', name: 'Молиявий Ҳисобот', icon: BarChart3 }
-  ];
+        if (!response.ok) throw new Error("Маълумотларни олишда хатолик");
 
-  const StatCard = ({ title, value, change, isPositive, icon: Icon, suffix = '' }) => (
+        const data = await response.json();
+        const sold = data.filter((item) => item.status === "SOLD");
+        setAllProducts(data);
+        setSoldProducts(sold);
+
+        // Агрегация monthlyStats из soldProducts
+        const stats = months.map((month) => {
+          const monthProducts = sold.filter((item) => {
+            if (!item.soldDate) return false;
+            const saleMonth = new Date(item.soldDate).toLocaleString("uz-UZ", {
+              month: "long",
+            });
+            return saleMonth.toLowerCase() === month.toLowerCase();
+          });
+
+          const sales = monthProducts.reduce((acc, item) => {
+            const price = Number(item.price) || 0;
+            const qty = Number(item.quantity) || 0;
+            return acc + price * qty;
+          }, 0);
+
+          const orders = monthProducts.reduce(
+            (acc, item) => acc + Number(item.quantity || 0),
+            0
+          );
+
+          return { month, sales, orders };
+        });
+
+        // Загрузка категорий
+        try {
+          const catResponse = await fetch("https://suddocs.uz/categories", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          });
+
+          if (!catResponse.ok) throw new Error("Категорияларни олишда хатолик");
+
+          const catData = await catResponse.json();
+          setCategories(catData);
+        } catch (catErr) {
+          console.error("Категория хатоси:", catErr);
+        }
+
+        setMonthlyStats(stats.filter((stat) => stat.orders > 0));
+        setLoading(false);
+      } catch (err) {
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+
+    fetchSoldProducts();
+  }, []);
+
+  const StatCard = ({
+    title,
+    value,
+    change,
+    isPositive,
+    icon: Icon,
+    suffix = "",
+  }) => (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{value}{suffix}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-2">
+            {value}
+            {suffix}
+          </p>
           {change && (
             <div className="flex items-center mt-2">
               {isPositive ? (
@@ -76,10 +216,16 @@ const Reports = () => {
               ) : (
                 <TrendingDown className="text-red-500 mr-1" size={16} />
               )}
-              <span className={`text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+              <span
+                className={`text-sm font-medium ${
+                  isPositive ? "text-green-600" : "text-red-600"
+                }`}
+              >
                 {change}%
               </span>
-              <span className="text-gray-500 text-sm ml-1">охирги ойга нисбатан</span>
+              <span className="text-gray-500 text-sm ml-1">
+                охирги ойга нисбатан
+              </span>
             </div>
           )}
         </div>
@@ -95,24 +241,24 @@ const Reports = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Умумий Даромад"
-          value={salesData.totalRevenue.toLocaleString()}
-          change={salesData.growth}
+          value={totalRevenue.toLocaleString("uz-UZ")}
+          change={0}
           isPositive={true}
           icon={DollarSign}
           suffix=" сўм"
         />
         <StatCard
           title="Жами Сотувлар"
-          value={salesData.totalSales}
-          change={15.2}
+          value={totalSales}
+          change={0}
           isPositive={true}
           icon={ShoppingCart}
         />
         <StatCard
           title="Ўртача Буюртма"
-          value={salesData.averageOrder.toLocaleString()}
-          change={-2.4}
-          isPositive={false}
+          value={averageOrder.toLocaleString("uz-UZ")}
+          change={0}
+          isPositive={true}
           icon={TrendingUp}
           suffix=" сўм"
         />
@@ -127,42 +273,75 @@ const Reports = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Ойлик Статистика</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Ойлик Статистика
+          </h3>
           <div className="space-y-4">
-            {monthlyStats.map((stat, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="font-medium text-gray-900">{stat.month}</p>
-                  <p className="text-sm text-gray-500">{stat.orders} буюртма</p>
+            {monthlyStats.length > 0 ? (
+              monthlyStats.map((stat) => (
+                <div
+                  key={stat.month}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium text-gray-900">{stat.month}</p>
+                    <p className="text-sm text-gray-500">
+                      {stat.orders} буюртма
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-gray-900">
+                      {stat.sales.toLocaleString("uz-UZ")}
+                    </p>
+                    <p className="text-sm text-gray-500">сўм</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-900">{stat.sales.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500">сўм</p>
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-gray-500">Нет данных о продажах</p>
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Энг Кўп Сотиладиган Маҳсулотлар</h3>
-          <div className="space-y-4">
-            {topProducts.map((product, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border-l-4 border-blue-400 pl-4">
-                <div>
-                  <p className="font-medium text-gray-900">{product.name}</p>
-                  <p className="text-sm text-gray-500">{product.sales} дона сотилди</p>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Энг Кўп Сотиладиган Маҳсулотлар ({selectedMonth})
+          </h3>
+          {topProducts.length > 0 ? (
+            <div className="space-y-4">
+              {topProducts.map((product, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 border-l-4 border-blue-400 pl-4"
+                >
+                  <div>
+                    <p className="font-medium text-gray-900">{product.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {product.sales} дона сотилди
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-green-600">
+                      {product.revenue.toLocaleString("uz-UZ")}
+                    </p>
+                    <p className="text-sm text-gray-500">сўм</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold text-green-600">{product.revenue.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500">сўм</p>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500">
+              Нет данных о проданных продуктах за {selectedMonth}
+            </p>
+          )}
         </div>
       </div>
     </div>
+  );
+
+  const totalQuantity = allProducts.reduce(
+    (acc, p) => acc + (p.quantity || 0),
+    0
   );
 
   const renderInventoryReport = () => (
@@ -174,42 +353,68 @@ const Reports = () => {
           icon={Package}
         />
         <StatCard
-          title="Кам Қолган"
+          title="Кам Қолган Маҳсулотлар"
           value={inventoryData.lowStockItems}
           icon={TrendingDown}
         />
         <StatCard
-          title="Тугаган"
+          title="Тугаган Маҳсулотлар"
           value={inventoryData.outOfStockItems}
-          icon={Activity}
+          icon={ShoppingBag}
         />
-        <StatCard
-          title="Инвентар Қиймати"
-          value={(inventoryData.totalValue / 1000000).toFixed(1)}
-          icon={DollarSign}
-          suffix="M сўм"
-        />
+        <div className="relative">
+          <StatCard
+            title="Инвентар Қиймати"
+            value={
+              showFullInventoryValue
+                ? inventoryData.totalValue.toLocaleString("uz-UZ")
+                : (inventoryData.totalValue / 1_000_000).toFixed(1)
+            }
+            icon={DollarSign}
+            suffix={showFullInventoryValue ? " сўм" : "M сўм"}
+          />
+          <button
+            onClick={() => setShowFullInventoryValue(!showFullInventoryValue)}
+            className="absolute top-2 right-2 text-xs text-blue-600 underline hover:text-blue-800"
+          >
+            {showFullInventoryValue ? "Камроқ" : "Кўпроқ"}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Категория Бўйича Тақсимот</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <h4 className="font-medium text-blue-900">Телефонлар</h4>
-            <p className="text-2xl font-bold text-blue-700">285</p>
-            <p className="text-sm text-blue-600">23% умумий инвентардан</p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Категория Бўйича Тақсимот
+        </h3>
+
+        {categories.length === 0 ? (
+          <p className="text-gray-500">Категориялар юкланмади</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {categories.map((category) => {
+              const categoryQty = (category.products || []).reduce(
+                (sum, p) => sum + (p.quantity || 0),
+                0
+              );
+              const percent =
+                totalQuantity > 0
+                  ? Math.round((categoryQty / totalQuantity) * 100)
+                  : 0;
+
+              return (
+                <div key={category.id} className="p-4 bg-blue-50 rounded-lg">
+                  <h4 className="font-medium text-blue-900">{category.name}</h4>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {categoryQty}
+                  </p>
+                  <p className="text-sm text-blue-600">
+                    {percent}% умумий инвентардан
+                  </p>
+                </div>
+              );
+            })}
           </div>
-          <div className="p-4 bg-green-50 rounded-lg">
-            <h4 className="font-medium text-green-900">Ноутбуклар</h4>
-            <p className="text-2xl font-bold text-green-700">167</p>
-            <p className="text-sm text-green-600">13% умумий инвентардан</p>
-          </div>
-          <div className="p-4 bg-purple-50 rounded-lg">
-            <h4 className="font-medium text-purple-900">Аксессуарлар</h4>
-            <p className="text-2xl font-bold text-purple-700">793</p>
-            <p className="text-sm text-purple-600">64% умумий инвентардан</p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -236,7 +441,7 @@ const Reports = () => {
           value={customerData.returningCustomers}
           change={5.7}
           isPositive={true}
-          icon={Activity}
+          icon={ShoppingBag}
         />
         <StatCard
           title="VIP Мижозлар"
@@ -248,24 +453,40 @@ const Reports = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Мижозлар Фаоллиги</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Мижозлар Фаоллиги
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">Фаол (охирги 30 кун)</span>
-              <span className="text-sm font-semibold text-green-600">567 (64%)</span>
+              <span className="text-sm font-medium text-gray-600">
+                Фаол (охирги 30 кун)
+              </span>
+              <span className="text-sm font-semibold text-green-600">
+                567 (64%)
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div className="bg-green-600 h-2 rounded-full" style={{ width: '64%' }}></div>
+              <div
+                className="bg-green-600 h-2 rounded-full"
+                style={{ width: "64%" }}
+              ></div>
             </div>
           </div>
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-gray-600">Нофаол (30+ кун)</span>
-              <span className="text-sm font-semibold text-yellow-600">325 (36%)</span>
+              <span className="text-sm font-medium text-gray-600">
+                Нофаол (30+ кун)
+              </span>
+              <span className="text-sm font-semibold text-yellow-600">
+                325 (36%)
+              </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div className="bg-yellow-600 h-2 rounded-full" style={{ width: '36%' }}></div>
+              <div
+                className="bg-yellow-600 h-2 rounded-full"
+                style={{ width: "36%" }}
+              ></div>
             </div>
           </div>
         </div>
@@ -278,7 +499,7 @@ const Reports = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Умумий Даромад"
-          value={(salesData.totalRevenue / 1000000).toFixed(1)}
+          value={(totalRevenue / 1000000).toFixed(1)}
           change={12.5}
           isPositive={true}
           icon={DollarSign}
@@ -311,7 +532,9 @@ const Reports = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Молиявий Кўрсаткичлар</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Молиявий Кўрсаткичлар
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <h4 className="font-medium text-gray-700">Даромад Манбаалари</h4>
@@ -322,11 +545,15 @@ const Reports = () => {
               </div>
               <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
                 <span className="text-sm font-medium">Ноутбук сотувлари</span>
-                <span className="text-sm font-semibold text-green-600">32%</span>
+                <span className="text-sm font-semibold text-green-600">
+                  32%
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
                 <span className="text-sm font-medium">Аксессуарлар</span>
-                <span className="text-sm font-semibold text-purple-600">23%</span>
+                <span className="text-sm font-semibold text-purple-600">
+                  23%
+                </span>
               </div>
             </div>
           </div>
@@ -339,11 +566,15 @@ const Reports = () => {
               </div>
               <div className="flex justify-between items-center p-3 bg-orange-50 rounded-lg">
                 <span className="text-sm font-medium">Инвентар харидлари</span>
-                <span className="text-sm font-semibold text-orange-600">35%</span>
+                <span className="text-sm font-semibold text-orange-600">
+                  35%
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
                 <span className="text-sm font-medium">Бошқа харажатлар</span>
-                <span className="text-sm font-semibold text-yellow-600">25%</span>
+                <span className="text-sm font-semibold text-yellow-600">
+                  25%
+                </span>
               </div>
             </div>
           </div>
@@ -354,24 +585,38 @@ const Reports = () => {
 
   const renderReportContent = () => {
     switch (selectedReport) {
-      case 'sales':
+      case "sales":
         return renderSalesReport();
-      case 'inventory':
+      case "inventory":
         return renderInventoryReport();
-      case 'customers':
+      case "customers":
         return renderCustomersReport();
-      case 'financial':
+      case "financial":
         return renderFinancialReport();
       default:
         return renderSalesReport();
     }
   };
 
+  if (loading) {
+    return <div className="text-center text-gray-600">Загрузка данных...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-600 text-center">
+        Ошибка загрузки данных: {error}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Ҳисоботлар ва Таҳлиллар</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Ҳисоботлар ва Таҳлиллар
+          </h1>
           <p className="text-gray-500 mt-1">Бизнес кўрсаткичлари ва таҳлили</p>
         </div>
         <div className="flex gap-3">
@@ -384,6 +629,17 @@ const Reports = () => {
             <option value="month">Бу ой</option>
             <option value="quarter">Бу чорак</option>
             <option value="year">Бу йил</option>
+          </select>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            {months.map((month) => (
+              <option key={month} value={month}>
+                {month}
+              </option>
+            ))}
           </select>
           <button className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
             <Download size={20} className="mr-2" />
@@ -402,8 +658,8 @@ const Reports = () => {
                 onClick={() => setSelectedReport(type.id)}
                 className={`flex items-center p-4 rounded-lg border-2 transition-colors duration-200 ${
                   selectedReport === type.id
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-gray-200 hover:border-gray-300 text-gray-600"
                 }`}
               >
                 <Icon size={24} className="mr-3" />
